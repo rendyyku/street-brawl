@@ -692,6 +692,7 @@ export class FightingEngine {
       const hurt = this.getHurtbox(def);
       if (rectsOverlap(pbox, hurt)) {
         const isLastHit = p.hitsLeft === 1;
+        const isSuperFinisher = p.isSuper && isLastHit;
         const hit = this.applyHit(
           atk,
           def,
@@ -701,7 +702,7 @@ export class FightingEngine {
             chipDamage: p.chipDamage,
             hitstun: p.hitstun,
             blockstun: p.blockstun,
-            pushback: isLastHit ? p.pushback * 2.2 : p.pushback,
+            pushback: isSuperFinisher ? p.pushback * 2.2 : p.pushback,
             hitstop: p.hitstop,
             knockdown: p.knockdown && isLastHit,
             superGain: p.isSuper ? 0 : 8,
