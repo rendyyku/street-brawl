@@ -22,7 +22,7 @@ def remove_magenta(im: Image.Image) -> Image.Image:
     out = arr.copy()
     out[is_bg, 3] = 0
     despill = np.clip((magenta_score - 35) / 55.0, 0.0, 1.0)
-    out[soft_bg, 3] = np.clip(255.0 * (1.0 - despill[soft_bg]), 0, 255)
+    out[soft_bg, 3] = np.clip(arr[soft_bg, 3] * (1.0 - despill[soft_bg]), 0, 255)
     out[soft_bg, 0] = np.minimum(out[soft_bg, 0], g[soft_bg] + 20)
     out[soft_bg, 2] = np.minimum(out[soft_bg, 2], g[soft_bg] + 20)
     return Image.fromarray(out.astype(np.uint8), 'RGBA')
