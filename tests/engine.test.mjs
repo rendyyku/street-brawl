@@ -200,3 +200,38 @@ test('special tapped during hitstop buffers and cancels after hitstop ends', () 
 
   assert.equal(eng.fighters[0].state, STATES.SPECIAL);
 });
+
+test('per-character ultimateTheme propagates to super_activate event and multi-hit super projectile', () => {
+  const eng = makeFightEngine();
+  eng.fighters[0].superMeter = MAX_SUPER;
+  eng.fighters[1].superMeter = MAX_SUPER;
+
+  // Nadia triggers Love Ultimate
+  eng.step({ ...createEmptyInput(), sup: true }, createEmptyInput());
+  const evs = eng.consumeEvents();
+  const supEv = evs.find((e) => e.type === 'super_activate');
+  assert.equal(supEv.ultimateTheme, 'love');
+  assert.equal(supEv.superName, 'HEARTSTORM FINALE');
+
+  // Advance past superFlash (30) + startup (10) so projectile spawns
+  for (let i = 0; i < 45; i++) eng.step();
+  assert.ok(eng.projectiles.length >= 1);
+  assert.equal(eng.projectiles[0].ultimateTheme, 'love');
+  assert.equal(eng.projectiles[0].hitsLeft, 5);
+});
+
+test('multi-hit super projectile lands all 5 hits and knocks down a cornered defender', () => {
+  const eng = makeFightEngine();
+  eng.fighters[0].x = 700;
+  eng.fighters[1].x = 900; // cornered at STAGE_RIGHT
+  eng.fighters[0].superMeter = MAX_SUPER;
+
+  eng.step({ ...createEmptyInput(), sup: true }, createEmptyInput());
+  let knockedDown = false;
+  for (let i = 0; i < 140; i++) {
+    eng.step();
+    if (eng.fighters[1].state === STATES.KNOCKDOWN) knockedDown = true;
+  }
+  assert.equal(knockedDown, true, '5th hit of Super should knock down a cornered defender');
+  assert.equal(eng.fighters[0].comboCount, 5);
+});

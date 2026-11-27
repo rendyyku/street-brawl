@@ -102,10 +102,24 @@ export class ArcadeAudio {
     this.playNoise(0.14, 0.12, 1600);
   }
 
-  playSuper() {
+  playSuper(theme = 'cyber') {
     this.unlock();
-    this.playTone(110, 880, 0.35, 'sawtooth', 0.2);
-    setTimeout(() => this.playTone(440, 1320, 0.28, 'square', 0.16), 90);
+    if (theme === 'love') {
+      // Shimmering Love Heartstorm arpeggio
+      [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+        setTimeout(() => this.playTone(freq, freq * 1.04, 0.22, 'triangle', 0.16), i * 65);
+      });
+      setTimeout(() => this.playTone(261.6, 523.25, 0.35, 'sawtooth', 0.14), 120);
+    } else if (theme === 'claude_code') {
+      // Rapid terminal key-chirps + bass overdrive drop
+      [880, 1174, 987, 1318, 1760].forEach((freq, i) => {
+        setTimeout(() => this.playTone(freq, freq, 0.05, 'square', 0.12), i * 40);
+      });
+      setTimeout(() => this.playTone(140, 48, 0.38, 'sawtooth', 0.22), 180);
+    } else {
+      this.playTone(110, 880, 0.35, 'sawtooth', 0.2);
+      setTimeout(() => this.playTone(440, 1320, 0.28, 'square', 0.16), 90);
+    }
   }
 
   playFight() {
