@@ -16,7 +16,7 @@ export const BUILTIN_FIGHTERS = [
     portrait: 'assets/fighters/nadia_portrait.webp',
     ultimateCutin: 'assets/fighters/nadia_cutin.webp',
     animations: {
-      ultimate: { src: 'assets/fighters/nadia_ultimate.webp', frames: 6, fps: 10 },
+      ultimate: { src: 'assets/fighters/nadia_ultimate.webp', frames: 6, fps: 30 },
     },
     colors: {
       primary: '#f43f5e',
@@ -39,7 +39,7 @@ export const BUILTIN_FIGHTERS = [
     portrait: 'assets/fighters/rendy_portrait.webp',
     ultimateCutin: 'assets/fighters/rendy_cutin.webp',
     animations: {
-      ultimate: { src: 'assets/fighters/rendy_ultimate.webp', frames: 6, fps: 10 },
+      ultimate: { src: 'assets/fighters/rendy_ultimate.webp', frames: 6, fps: 30 },
     },
     colors: {
       primary: '#d97757',
