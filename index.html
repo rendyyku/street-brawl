@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#0d0b1a" />
   <title>STREET BRAWL — 2D Arcade Fighting</title>
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="assets/icon-180.png" />
   <link rel="stylesheet" href="css/style.css" />
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
 </head>
@@ -39,7 +41,8 @@
             <span class="btn-sub">Upload Sprite 4×4</span>
           </button>
         </div>
-        <p class="title-tip">Tip: Tahan arah mundur untuk <strong>BLOCK</strong> • Arah + <strong>SP</strong> untuk Uppercut / Dash Kick!</p>
+        <button class="btn-link" id="btn-open-audio">&#128266; Pengaturan Suara</button>
+        <p class="title-tip">Tip: Tahan arah mundur untuk <strong>BLOCK</strong> • Arah + <strong>SP</strong> untuk Uppercut / Dash Kick • Meter 50% = <strong>ULTI 1</strong>, 100% = <strong>ULTI 2</strong>!</p>
       </div>
     </section>
 
@@ -126,6 +129,21 @@
     </section>
 
     <!-- SPRITE SHEET IMPORTER MODAL -->
+    <div id="modal-audio" class="modal hidden">
+      <div class="modal-card audio-card">
+        <div class="panel-header">
+          <h2>PENGATURAN SUARA</h2>
+          <button class="btn-icon" id="btn-close-audio">&times;</button>
+        </div>
+        <label class="vol-row">Master <input type="range" min="0" max="100" data-vol="master" /></label>
+        <label class="vol-row">Musik (BGM) <input type="range" min="0" max="100" data-vol="music" /></label>
+        <label class="vol-row">Efek (SFX) <input type="range" min="0" max="100" data-vol="sfx" /></label>
+        <label class="vol-row">Suara Karakter &amp; Announcer <input type="range" min="0" max="100" data-vol="voice" /></label>
+        <label class="vol-row vol-mute"><input type="checkbox" id="chk-mute" /> Bisukan semua suara</label>
+        <p class="modal-desc">Audio CC0 dari Kenney.nl &amp; OpenGameArt — lihat <code>assets/audio/CREDITS.md</code>.</p>
+      </div>
+    </div>
+
     <div id="modal-importer" class="modal hidden">
       <div class="modal-card">
         <div class="panel-header">
@@ -189,7 +207,8 @@
             </div>
             <div class="super-track">
               <div class="super-fill" id="hud-p1-super"></div>
-              <span class="super-label" id="hud-p1-super-label">SUPER</span>
+              <span class="super-divider"></span>
+              <span class="super-label" id="hud-p1-super-label">ULTI</span>
             </div>
           </div>
         </div>
@@ -198,7 +217,8 @@
           <div class="timer-box" id="hud-timer">99</div>
           <div class="hud-meta">
             <span id="hud-ping" class="ping-badge hidden">0ms</span>
-            <button class="hud-mini-btn" id="btn-mute" title="Suara">SFX</button>
+            <button class="hud-mini-btn" id="btn-mute" title="Bisukan">SFX</button>
+            <button class="hud-mini-btn" id="btn-audio-battle" title="Volume">VOL</button>
             <button class="hud-mini-btn" id="btn-exit-battle" title="Menu">MENU</button>
           </div>
         </div>
@@ -217,7 +237,8 @@
             </div>
             <div class="super-track">
               <div class="super-fill" id="hud-p2-super"></div>
-              <span class="super-label" id="hud-p2-super-label">SUPER</span>
+              <span class="super-divider"></span>
+              <span class="super-label" id="hud-p2-super-label">ULTI</span>
             </div>
           </div>
           <img id="hud-p2-portrait" class="hud-portrait" src="assets/fighters/rendy_portrait.webp" alt="P2" />
@@ -260,13 +281,14 @@
           <button class="arc-btn btn-sp" data-action="sp"><span>SP</span><small>Jurus</small></button>
           <button class="arc-btn btn-lk" data-action="lk"><span>LK</span><small>Low</small></button>
           <button class="arc-btn btn-hk" data-action="hk"><span>HK</span><small>Kick</small></button>
-          <button class="arc-btn btn-sup" data-action="sup" id="btn-touch-super"><span>ULT</span><small>Super</small></button>
+          <button class="arc-btn btn-ex" data-action="ex" id="btn-touch-ex"><span>ULT1</span><small>50%</small></button>
+          <button class="arc-btn btn-sup" data-action="sup" id="btn-touch-super"><span>ULT2</span><small>100%</small></button>
         </div>
       </div>
 
       <div class="desktop-keys-hint">
-        P1: <strong>WASD</strong> Gerak • <strong>J/U</strong> Pukul • <strong>K/I</strong> Tendang • <strong>L</strong> Jurus • <strong>O</strong> Super |
-        P2 (Local): <strong>Panah</strong> + <strong>Numpad 1-6</strong>
+        P1: <strong>WASD</strong> Gerak • <strong>J/U</strong> Pukul • <strong>K/I</strong> Tendang • <strong>L</strong> Jurus • <strong>P</strong> Ulti 1 • <strong>O</strong> Ulti 2 |
+        P2 (Local): <strong>Panah</strong> + <strong>Numpad 1-6</strong>, <strong>Numpad 9</strong> Ulti 1
       </div>
     </section>
   </div>

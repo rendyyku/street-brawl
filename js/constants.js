@@ -8,6 +8,8 @@ export const TICK_RATE = 60;
 export const ROUND_TIME_SECONDS = 99;
 export const MAX_ROUNDS_TO_WIN = 2;
 export const MAX_SUPER = 100;
+/** ULTI 1 (EX / Rush) costs half the bar; ULTI 2 (cinematic) costs the full bar. */
+export const ULTI1_COST = 50;
 
 export const PHYSICS = {
   gravity: 0.92,
@@ -37,6 +39,7 @@ export const STATES = {
   SPECIAL: 'special',
   UPPERCUT: 'uppercut',
   DASH_KICK: 'dash_kick',
+  RUSH: 'rush',
   SUPER: 'super',
   BLOCK: 'block',
   CROUCH_BLOCK: 'crouch_block',
@@ -55,6 +58,7 @@ export const ATTACK_STATES = new Set([
   STATES.SPECIAL,
   STATES.UPPERCUT,
   STATES.DASH_KICK,
+  STATES.RUSH,
   STATES.SUPER,
 ]);
 
@@ -188,6 +192,27 @@ export const MOVES = {
     lungeVx: 8.8,
     hitLevel: 'mid',
     hitbox: { x: 18, y: -104, w: 86, h: 48 },
+  },
+  [STATES.RUSH]: {
+    name: 'RUSH ULTIMATE',
+    startup: 6,
+    active: 28,
+    recovery: 18,
+    damage: 44,
+    chipDamage: 10,
+    hitstun: 22,
+    blockstun: 12,
+    pushback: 3,
+    hitstop: 5,
+    superCost: ULTI1_COST,
+    superGain: 0,
+    cancelable: false,
+    knockdown: false,
+    invincibleFrames: 10,
+    lungeVx: 10.5,
+    multiHit: { count: 4, interval: 6, finisherPushback: 20 },
+    hitLevel: 'mid',
+    hitbox: { x: 14, y: -132, w: 96, h: 112 },
   },
   [STATES.SUPER]: {
     name: 'ULTIMATE BLAST',

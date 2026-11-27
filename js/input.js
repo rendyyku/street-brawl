@@ -11,6 +11,7 @@ const P1_KEYMAP = {
   KeyI: 'hk',
   KeyL: 'sp',
   KeyO: 'sup',
+  KeyP: 'ex',
   // Alternate desktop bindings (arrows + ZXC when in 1P/online mode)
 };
 
@@ -25,6 +26,7 @@ const P1_SINGLE_ALT = {
   KeyV: 'hk',
   Space: 'sp',
   KeyB: 'sup',
+  KeyN: 'ex',
 };
 
 const P2_KEYMAP = {
@@ -38,6 +40,7 @@ const P2_KEYMAP = {
   Numpad5: 'hk',
   Numpad3: 'sp',
   Numpad6: 'sup',
+  Numpad9: 'ex',
 };
 
 export class InputManager {
@@ -184,6 +187,7 @@ export function packInput(inp) {
   if (inp.hk) bits |= 128;
   if (inp.sp) bits |= 256;
   if (inp.sup) bits |= 512;
+  if (inp.ex) bits |= 1024;
   return bits;
 }
 
@@ -199,5 +203,6 @@ export function unpackInput(bits) {
     hk: Boolean(bits & 128),
     sp: Boolean(bits & 256),
     sup: Boolean(bits & 512),
+    ex: Boolean(bits & 1024),
   };
 }

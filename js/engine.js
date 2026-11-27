@@ -10,6 +10,7 @@ import {
   STAGE_RIGHT,
   STATES,
   TICK_RATE,
+  ULTI1_COST,
 } from './constants.js';
 
 export function createEmptyInput() {
@@ -24,6 +25,7 @@ export function createEmptyInput() {
     hk: false,
     sp: false,
     sup: false,
+    ex: false,
   };
 }
 
@@ -54,9 +56,11 @@ function createFighterState(slot, config) {
     comboCount: 0,
     comboTimer: 0,
     roundsWon: 0,
-    prevButtons: { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false },
-    bufferedButtons: { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false },
+    prevButtons: { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false, ex: false },
+    bufferedButtons: { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false, ex: false },
     bufferedSpDir: null,
+    multiHits: 0,
+    lastHitFrame: -99,
   };
 }
 
@@ -86,6 +90,8 @@ export class FightingEngine {
     this.hitstop = 0;
     this.superFlash = 0;
     this.superFlashOwner = -1;
+    this.superFlashKind = 'super';
+    this.superFlashMax = 30;
     this.slowMoTimer = 0;
     this.bannerText = 'ROUND 1';
     this.bannerSub = 'GET READY!';
@@ -181,7 +187,7 @@ export class FightingEngine {
       for (let i = 0; i < 2; i++) {
         const f = this.fighters[i];
         const inp = inputs[i];
-        for (const key of ['lp', 'hp', 'lk', 'hk', 'sp', 'sup']) {
+        for (const key of ['lp', 'hp', 'lk', 'hk', 'sp', 'sup', 'ex']) {
           if (inp[key] && !f.prevButtons[key]) {
             f.bufferedButtons[key] = true;
             if (key === 'sp') {
@@ -315,9 +321,10 @@ export class FightingEngine {
       hk: Boolean((input.hk && !f.prevButtons.hk) || f.bufferedButtons.hk),
       sp: Boolean((input.sp && !f.prevButtons.sp) || f.bufferedButtons.sp),
       sup: Boolean((input.sup && !f.prevButtons.sup) || f.bufferedButtons.sup),
+      ex: Boolean((input.ex && !f.prevButtons.ex) || f.bufferedButtons.ex),
     };
     const spDir = f.bufferedButtons.sp && f.bufferedSpDir ? f.bufferedSpDir : input;
-    f.bufferedButtons = { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false };
+    f.bufferedButtons = { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false, ex: false };
     f.bufferedSpDir = null;
     f.prevButtons = {
       lp: Boolean(input.lp),
@@ -326,6 +333,7 @@ export class FightingEngine {
       hk: Boolean(input.hk),
       sp: Boolean(input.sp),
       sup: Boolean(input.sup),
+      ex: Boolean(input.ex),
     };
 
     const grounded = this.isGrounded(f);
@@ -367,11 +375,17 @@ export class FightingEngine {
       if (f.state === STATES.DASH_KICK && f.stateFrame >= move.startup && f.stateFrame < move.startup + move.active) {
         f.vx = f.facing * move.lungeVx;
       }
+      // Rush Ultimate dashes in, then sticks to the opponent while the barrage lands
+      if (f.state === STATES.RUSH && f.stateFrame >= move.startup && f.stateFrame < move.startup + move.active) {
+        f.vx = f.facing * (f.multiHits > 0 ? 2.2 : move.lungeVx * f.speedMul);
+      }
 
       // Cancel normal -> special or super on hit/block!
       if (move.cancelable && f.moveHitConnected) {
         if (pressed.sup && f.superMeter >= MAX_SUPER) {
           this.startMove(f, STATES.SUPER);
+        } else if (pressed.ex && f.superMeter >= ULTI1_COST) {
+          this.startMove(f, STATES.RUSH);
         } else if (pressed.sp) {
           const spForward = (f.facing === 1 && spDir.right) || (f.facing === -1 && spDir.left);
           const spBack = (f.facing === 1 && spDir.left) || (f.facing === -1 && spDir.right);
@@ -396,6 +410,8 @@ export class FightingEngine {
       // Check attack triggers
       if (pressed.sup && f.superMeter >= MAX_SUPER && grounded) {
         this.startMove(f, STATES.SUPER);
+      } else if (pressed.ex && f.superMeter >= ULTI1_COST && grounded) {
+        this.startMove(f, STATES.RUSH);
       } else if (pressed.sp && grounded) {
         const spForward = (f.facing === 1 && spDir.right) || (f.facing === -1 && spDir.left);
         const spBack = (f.facing === 1 && spDir.left) || (f.facing === -1 && spDir.right);
@@ -479,6 +495,8 @@ export class FightingEngine {
     f.stateFrame = 0;
     f.hitRegistered = false;
     f.moveHitConnected = false;
+    f.multiHits = 0;
+    f.lastHitFrame = -99;
     if (this.isGrounded(f)) f.vx *= 0.25;
     if (move.invincibleFrames) {
       f.invincibleFrames = Math.max(f.invincibleFrames, move.invincibleFrames);
@@ -486,6 +504,8 @@ export class FightingEngine {
     if (moveState === STATES.SUPER) {
       f.superMeter = Math.max(0, f.superMeter - MAX_SUPER);
       this.superFlash = 30;
+      this.superFlashMax = 30;
+      this.superFlashKind = 'super';
       this.superFlashOwner = f.slot;
       const cfg = this.configs[f.slot] || {};
       this.emit('super_activate', {
@@ -494,6 +514,21 @@ export class FightingEngine {
         y: f.y - 90,
         name: f.name,
         superName: cfg.superName || 'ULTIMATE BLAST',
+        ultimateTheme: cfg.ultimateTheme || 'cyber',
+      });
+    } else if (moveState === STATES.RUSH) {
+      f.superMeter = Math.max(0, f.superMeter - ULTI1_COST);
+      this.superFlash = 12;
+      this.superFlashMax = 12;
+      this.superFlashKind = 'rush';
+      this.superFlashOwner = f.slot;
+      const cfg = this.configs[f.slot] || {};
+      this.emit('rush_activate', {
+        slot: f.slot,
+        x: f.x,
+        y: f.y - 90,
+        name: f.name,
+        rushName: cfg.rushName || 'RUSH ULTIMATE',
         ultimateTheme: cfg.ultimateTheme || 'cyber',
       });
     } else {
@@ -660,19 +695,29 @@ export class FightingEngine {
     for (let i = 0; i < 2; i++) {
       const atk = this.fighters[i];
       const def = this.fighters[1 - i];
-      if (atk.hitRegistered) continue;
+      const move = MOVES[atk.state];
+      const multi = move?.multiHit;
+      const canRehit =
+        multi && atk.multiHits < multi.count && atk.stateFrame - atk.lastHitFrame >= multi.interval;
+      if (atk.hitRegistered && !canRehit) continue;
       const hb = this.getActiveHitbox(atk);
       if (!hb) continue;
       const hurt = this.getHurtbox(def);
       if (rectsOverlap(hb, hurt)) {
-        const move = MOVES[atk.state];
+        const isFinisher = Boolean(multi) && atk.multiHits === multi.count - 1;
         const impactX = (Math.max(hb.x, hurt.x) + Math.min(hb.x + hb.w, hurt.x + hurt.w)) / 2;
         const impactY = (Math.max(hb.y, hurt.y) + Math.min(hb.y + hb.h, hurt.y + hurt.h)) / 2;
         pendingMelee.push({
           atk,
           def,
           defInput: inputs[1 - i],
-          spec: { ...move, damage: Math.round(move.damage * atk.powerMul) },
+          spec: {
+            ...move,
+            damage: Math.round(move.damage * atk.powerMul),
+            knockdown: move.knockdown || isFinisher,
+            pushback: isFinisher ? multi.finisherPushback : move.pushback,
+          },
+          isFinisher,
           impactX,
           impactY,
         });
@@ -680,7 +725,12 @@ export class FightingEngine {
     }
     for (const m of pendingMelee) {
       const hit = this.applyHit(m.atk, m.def, m.defInput, m.spec, m.impactX, m.impactY);
-      if (hit) m.atk.hitRegistered = true;
+      if (hit) {
+        m.atk.hitRegistered = true;
+        m.atk.multiHits += 1;
+        m.atk.lastHitFrame = m.atk.stateFrame;
+        if (m.isFinisher) this.emit('rush_finisher', { slot: m.atk.slot, x: m.impactX, y: m.impactY });
+      }
     }
 
     // Projectile hits
@@ -714,6 +764,11 @@ export class FightingEngine {
         if (hit) {
           p.hitsLeft -= 1;
           p.hitCooldown = p.isSuper ? 4 : 0;
+          if (isSuperFinisher) {
+            // Dramatic slow-mo on the cinematic Ultimate's final blow
+            this.slowMoTimer = Math.max(this.slowMoTimer, 40);
+            this.emit('super_finisher', { slot: p.owner, x: p.x, y: p.y });
+          }
         }
       }
     }
@@ -748,7 +803,7 @@ export class FightingEngine {
       this.roundWinnerSlot = 0;
       this.bannerText = p1.hp === p1.maxHp ? 'PERFECT K.O.!' : 'K.O.!';
       this.bannerSub = `${p1.name} TAKES ROUND ${this.round}`;
-      this.emit('ko', { winnerSlot: 0, perfect: p1.hp === p1.maxHp });
+      this.emit('ko', { winnerSlot: 0, perfect: p1.hp === p1.maxHp, x: p2.x, y: p2.y - 80 });
     } else {
       p1.state = STATES.KO;
       p1.vy = -12;
@@ -759,7 +814,7 @@ export class FightingEngine {
       this.roundWinnerSlot = 1;
       this.bannerText = p2.hp === p2.maxHp ? 'PERFECT K.O.!' : 'K.O.!';
       this.bannerSub = `${p2.name} TAKES ROUND ${this.round}`;
-      this.emit('ko', { winnerSlot: 1, perfect: p2.hp === p2.maxHp });
+      this.emit('ko', { winnerSlot: 1, perfect: p2.hp === p2.maxHp, x: p1.x, y: p1.y - 80 });
     }
   }
 
@@ -782,6 +837,9 @@ export class FightingEngine {
       this.bannerText = 'TIME OVER';
       this.bannerSub = `${p2.name} WINS!`;
     } else {
+      // A draw awards both players the round (like a double K.O.) so a match can't stall forever
+      p1.roundsWon += 1;
+      p2.roundsWon += 1;
       this.roundWinnerSlot = -1;
       this.bannerText = 'DRAW GAME';
       this.bannerSub = '';
@@ -803,6 +861,8 @@ export class FightingEngine {
       hitstop: this.hitstop,
       superFlash: this.superFlash,
       superFlashOwner: this.superFlashOwner,
+      superFlashKind: this.superFlashKind,
+      superFlashMax: this.superFlashMax,
       bannerText: this.bannerText,
       bannerSub: this.bannerSub,
       winnerSlot: this.winnerSlot,
@@ -844,6 +904,8 @@ export class FightingEngine {
     this.hitstop = snap.hitstop;
     this.superFlash = snap.superFlash;
     this.superFlashOwner = snap.superFlashOwner;
+    this.superFlashKind = snap.superFlashKind || 'super';
+    this.superFlashMax = snap.superFlashMax || 30;
     this.bannerText = snap.bannerText;
     this.bannerSub = snap.bannerSub;
     this.winnerSlot = snap.winnerSlot;

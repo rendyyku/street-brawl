@@ -1,6 +1,7 @@
 import {
   GROUND_Y,
   MAX_SUPER,
+  ULTI1_COST,
   MOVES,
   STAGES,
   STAGE_HEIGHT,
@@ -56,6 +57,12 @@ export function getSpriteCellIndex(f) {
       const m = MOVES[STATES.SUPER];
       return sf < m.startup ? 12 : 13;
     }
+    case STATES.RUSH: {
+      const m = MOVES[STATES.RUSH];
+      if (sf < m.startup) return 5;
+      if (sf >= m.startup + m.active) return 0;
+      return [9, 11, 8, 10][Math.floor((sf - m.startup) / 4) % 4];
+    }
     case STATES.KNOCKDOWN:
     case STATES.KO:
       return 14;
@@ -85,6 +92,8 @@ export function getAnimationKeyForState(state) {
       return 'kick';
     case STATES.SPECIAL:
       return 'special';
+    case STATES.RUSH:
+      return 'rush';
     case STATES.SUPER:
       return 'ultimate';
     case STATES.KO:
@@ -114,6 +123,17 @@ function drawCone(ctx, x, y, size, color) {
   ctx.restore();
 }
 
+function drawPetal(ctx, x, y, size, color, rot) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, size, size * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawHeart(ctx, x, y, size, color) {
   ctx.save();
   ctx.translate(x, y);
@@ -138,6 +158,32 @@ export class GameRenderer {
     this.shake = 0;
     this.stage = STAGES[0];
     this.bgTick = 0;
+    // Light cinematic camera: zooms toward a focus point on combos, KO and Ultimates
+    this.cam = { zoom: 1, x: STAGE_WIDTH / 2, y: STAGE_HEIGHT / 2, target: 1, fx: STAGE_WIDTH / 2, fy: STAGE_HEIGHT / 2, hold: 0 };
+  }
+
+  focusCamera(x, y, zoom, holdFrames) {
+    if (zoom < this.cam.target && this.cam.hold > 0) return;
+    this.cam.target = zoom;
+    this.cam.fx = x;
+    this.cam.fy = y;
+    this.cam.hold = holdFrames;
+  }
+
+  updateCamera() {
+    const c = this.cam;
+    if (c.hold > 0) c.hold -= 1;
+    else c.target = 1;
+    c.zoom += (c.target - c.zoom) * 0.12;
+    const tx = c.target > 1 ? c.fx : STAGE_WIDTH / 2;
+    const ty = c.target > 1 ? c.fy : STAGE_HEIGHT / 2;
+    c.x += (tx - c.x) * 0.14;
+    c.y += (ty - c.y) * 0.14;
+    // Keep the zoomed viewport inside the stage
+    const halfW = STAGE_WIDTH / (2 * c.zoom);
+    const halfH = STAGE_HEIGHT / (2 * c.zoom);
+    c.x = Math.max(halfW, Math.min(STAGE_WIDTH - halfW, c.x));
+    c.y = Math.max(halfH, Math.min(STAGE_HEIGHT - halfH, c.y));
   }
 
   setStage(stageId) {
@@ -219,6 +265,7 @@ export class GameRenderer {
         const style = ev.heavy ? theme.particleStyle : 'spark';
         this.spawnHitSparks(ev.x, ev.y, col, ev.heavy ? 18 : 11, ev.heavy, style);
         this.shake = Math.max(this.shake, ev.heavy ? 12 : 6);
+        if (ev.combo >= 5) this.focusCamera(ev.x, ev.y, 1.08, 12);
       } else if (ev.type === 'block') {
         this.spawnHitSparks(ev.x, ev.y, '#38bdf8', 9, false, 'spark');
         this.shake = Math.max(this.shake, 4);
@@ -229,10 +276,24 @@ export class GameRenderer {
         this.spawnDust(ev.x, ev.y, 6);
       } else if (ev.type === 'ko') {
         this.shake = 18;
+        this.focusCamera(ev.x ?? STAGE_WIDTH / 2, ev.y ?? GROUND_Y - 90, 1.22, 70);
       } else if (ev.type === 'super_activate') {
         const theme = ULTIMATE_THEMES[ev.ultimateTheme] || ULTIMATE_THEMES.cyber;
         this.spawnHitSparks(ev.x, ev.y, theme.primary, 24, true, theme.particleStyle);
         this.shake = 12;
+        this.focusCamera(ev.x, ev.y, 1.3, 42);
+      } else if (ev.type === 'rush_activate') {
+        const theme = ULTIMATE_THEMES[ev.ultimateTheme] || ULTIMATE_THEMES.cyber;
+        this.spawnHitSparks(ev.x, ev.y, theme.accent, 14, true, theme.id === 'love' ? 'petal' : theme.particleStyle);
+        this.shake = 7;
+        this.focusCamera(ev.x, ev.y, 1.14, 20);
+      } else if (ev.type === 'rush_finisher') {
+        this.spawnHitSparks(ev.x, ev.y, '#ffffff', 20, true, 'spark');
+        this.shake = 14;
+        this.focusCamera(ev.x, ev.y, 1.16, 18);
+      } else if (ev.type === 'super_finisher') {
+        this.shake = 20;
+        this.focusCamera(ev.x, ev.y, 1.35, 56);
       }
     }
   }
@@ -249,6 +310,15 @@ export class GameRenderer {
       this.shake *= 0.82;
     } else {
       this.shake = 0;
+    }
+
+    this.updateCamera();
+    const cam = this.cam;
+    ctx.save();
+    if (cam.zoom > 1.001) {
+      ctx.translate(STAGE_WIDTH / 2, STAGE_HEIGHT / 2);
+      ctx.scale(cam.zoom, cam.zoom);
+      ctx.translate(-cam.x, -cam.y);
     }
 
     // 1. Background stage
@@ -270,10 +340,15 @@ export class GameRenderer {
 
     // 4. Particles
     this.updateAndDrawParticles(ctx);
+    ctx.restore();
 
-    // 5. Cinematic Ultimate Cut-In overlay (during superFlash)
+    // 5. Cinematic cut-in overlay: quick slash for ULTI 1, full banner for ULTI 2
     if (engine.superFlash > 0 && engine.superFlashOwner >= 0) {
-      this.drawUltimateCutIn(ctx, engine, configs[engine.superFlashOwner]);
+      if (engine.superFlashKind === 'rush') {
+        this.drawRushCutIn(ctx, engine, configs[engine.superFlashOwner]);
+      } else {
+        this.drawUltimateCutIn(ctx, engine, configs[engine.superFlashOwner]);
+      }
     }
 
     // 6. Combo Callouts & Round/KO Banners
@@ -430,6 +505,48 @@ export class GameRenderer {
     ctx.restore();
   }
 
+  drawRushCutIn(ctx, engine, cfg) {
+    const theme = ULTIMATE_THEMES[cfg?.ultimateTheme] || ULTIMATE_THEMES.cyber;
+    const max = engine.superFlashMax || 12;
+    const t = 1 - engine.superFlash / max;
+    const slide = t < 0.35 ? (1 - t / 0.35) * STAGE_WIDTH : 0;
+    const bandY = 196;
+    const bandH = 96;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(6, 5, 16, 0.35)';
+    ctx.fillRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
+    ctx.translate(slide, 0);
+    ctx.transform(1, 0, -0.22, 1, 0, 0);
+
+    const g = ctx.createLinearGradient(0, bandY, STAGE_WIDTH, bandY);
+    g.addColorStop(0, theme.bgTop);
+    g.addColorStop(0.5, theme.primary);
+    g.addColorStop(1, theme.bgTop);
+    ctx.fillStyle = g;
+    ctx.fillRect(40, bandY, STAGE_WIDTH + 80, bandH);
+    ctx.fillStyle = theme.accent;
+    ctx.fillRect(40, bandY - 4, STAGE_WIDTH + 80, 4);
+    ctx.fillRect(40, bandY + bandH, STAGE_WIDTH + 80, 4);
+
+    const port = cfg?.portrait ? this.spriteCache.get(cfg.portrait) : null;
+    if (port && port.complete && port.naturalWidth > 0) {
+      ctx.drawImage(port, 150, bandY + 4, bandH - 8, bandH - 8);
+    }
+
+    ctx.font = 'italic 900 40px system-ui, sans-serif';
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = '#09090b';
+    ctx.fillStyle = theme.core;
+    const title = cfg?.rushName || 'RUSH ULTIMATE';
+    ctx.strokeText(title, 270, bandY + 50);
+    ctx.fillText(title, 270, bandY + 50);
+    ctx.font = '800 16px ui-monospace, system-ui, sans-serif';
+    ctx.fillStyle = theme.id === 'claude_code' ? theme.accent : theme.secondary;
+    ctx.fillText(`ULTI 1 // ${cfg?.rushQuote || 'RUSH!'}`, 274, bandY + 78);
+    ctx.restore();
+  }
+
   drawStage(ctx) {
     const s = this.stage;
     const skyGrad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
@@ -539,9 +656,10 @@ export class GameRenderer {
     ctx.ellipse(f.x, GROUND_Y + 6, 56 * airRatio, 13 * airRatio, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    if (f.superMeter >= MAX_SUPER || f.state === STATES.SUPER) {
+    if (f.superMeter >= ULTI1_COST || f.state === STATES.SUPER || f.state === STATES.RUSH) {
       const theme = ULTIMATE_THEMES[config?.ultimateTheme] || ULTIMATE_THEMES.cyber;
-      const pulse = 0.25 + Math.sin(this.bgTick * 0.2) * 0.12;
+      const full = f.superMeter >= MAX_SUPER || f.state === STATES.SUPER;
+      const pulse = (full ? 0.25 : 0.05) + Math.sin(this.bgTick * 0.2) * (full ? 0.12 : 0.06);
       const g = ctx.createRadialGradient(f.x, f.y - 90, 12, f.x, f.y - 90, 110);
       g.addColorStop(0, theme.primary + '77');
       g.addColorStop(1, 'rgba(0,0,0,0)');
@@ -670,6 +788,13 @@ export class GameRenderer {
         tilt = 0.1;
         break;
       }
+      case STATES.RUSH: {
+        scaleX = 1.1;
+        scaleY = 0.95;
+        tilt = 0.09;
+        offsetX = f.facing * (sf % 4 < 2 ? 10 : 2);
+        break;
+      }
       case STATES.HITSTUN: {
         if (sf < 8) {
           offsetX = sf % 2 === 0 ? -6 : 6;
@@ -700,6 +825,7 @@ export class GameRenderer {
     // Spawn anime afterimage trail on fast specials / Ultimate
     const isTrailState =
       f.state === STATES.DASH_KICK ||
+      f.state === STATES.RUSH ||
       f.state === STATES.UPPERCUT ||
       f.state === STATES.SUPER ||
       (f.state === STATES.HP && sf >= 5 && sf < 11) ||
@@ -718,6 +844,24 @@ export class GameRenderer {
         tint: theme.primary,
         life: 9,
         maxLife: 9,
+      });
+    }
+
+    if (f.state === STATES.RUSH && sf % 2 === 0) {
+      const theme = ULTIMATE_THEMES[config?.ultimateTheme] || ULTIMATE_THEMES.cyber;
+      const kind = theme.id === 'love' ? 'petal' : theme.particleStyle;
+      this.particles.push({
+        x: f.x - f.facing * (20 + Math.random() * 30),
+        y: f.y - 40 - Math.random() * 110,
+        vx: -f.facing * (2 + Math.random() * 3),
+        vy: -0.6 - Math.random(),
+        life: 20,
+        maxLife: 20,
+        size: 7 + Math.random() * 5,
+        color: sf % 4 === 0 ? theme.primary : theme.accent,
+        kind,
+        token: CODE_TOKENS[(sf / 2) % CODE_TOKENS.length],
+        rot: Math.random() * Math.PI,
       });
     }
 
@@ -973,6 +1117,9 @@ export class GameRenderer {
         ctx.stroke();
       } else if (p.kind === 'heart') {
         drawHeart(ctx, p.x, p.y, p.size * (0.7 + alpha * 0.5), p.color);
+      } else if (p.kind === 'petal') {
+        p.rot = (p.rot || 0) + 0.15;
+        drawPetal(ctx, p.x, p.y, p.size * (0.6 + alpha * 0.5), p.color === '#ffffff' ? '#fb7185' : p.color, p.rot);
       } else if (p.kind === 'cone') {
         drawCone(ctx, p.x, p.y, p.size * (0.8 + alpha * 0.4), p.color === '#ffffff' ? '#f97316' : p.color);
       } else if (p.kind === 'code') {

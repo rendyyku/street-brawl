@@ -9,6 +9,8 @@ export const BUILTIN_FIGHTERS = [
     title: 'Sarjana Fighter',
     archetype: 'shotokan',
     specialName: 'WISUDA WAVE',
+    rushName: 'ROSE DASH BARRAGE',
+    rushQuote: 'Kelopak mawar, serbu!',
     superName: 'HEARTSTORM FINALE',
     superQuote: 'CINTA TANPA BATAS!',
     ultimateTheme: 'love',
@@ -32,6 +34,8 @@ export const BUILTIN_FIGHTERS = [
     title: 'Claude Code Striker',
     archetype: 'striker',
     specialName: 'PROMPT BLAST',
+    rushName: 'GIT PUSH RUSH',
+    rushQuote: '$ git push --force',
     superName: 'CLAUDE CODE OVERDRIVE',
     superQuote: '> claude --ship-it --force',
     ultimateTheme: 'claude_code',
@@ -56,6 +60,7 @@ export const BUILTIN_FIGHTERS = [
     archetype: 'shotokan',
     specialName: 'BAGI-BAGI SEPEDA',
     rushName: 'BLUSUKAN RUSH',
+    rushQuote: 'Turun langsung ke lapangan!',
     superName: 'INFRASTRUKTUR FINALE',
     superQuote: 'KERJA! KERJA! KERJA!',
     ultimateTheme: 'pembangunan',
@@ -83,6 +88,45 @@ export const BUILTIN_FIGHTERS = [
     isCustom: false,
   },
 ];
+
+const SAFE_ASSET = /^assets\/[\w\-./]+$/;
+const safeAsset = (src, allowDataImage = false) =>
+  typeof src === 'string' &&
+  !src.includes('..') &&
+  (SAFE_ASSET.test(src) || (allowDataImage && src.startsWith('data:image/')))
+    ? src
+    : undefined;
+
+/**
+ * Fighters received from an online opponent may carry arbitrary URLs.
+ * Keep only local asset paths (and inline data images for custom uploads) so a
+ * remote peer can't make this browser fetch or play third-party URLs.
+ */
+export function sanitizeRemoteFighter(fighter) {
+  if (!fighter || typeof fighter !== 'object') return null;
+  const clean = { ...fighter };
+  clean.spriteSheet = safeAsset(fighter.spriteSheet, true);
+  clean.portrait = safeAsset(fighter.portrait, true);
+  clean.ultimateCutin = safeAsset(fighter.ultimateCutin, true);
+  if (fighter.animations && typeof fighter.animations === 'object') {
+    clean.animations = {};
+    for (const [key, anim] of Object.entries(fighter.animations)) {
+      const src = safeAsset(anim?.src, true);
+      if (src) clean.animations[key] = { src, frames: Number(anim.frames) || 6, fps: Number(anim.fps) || 12 };
+    }
+  }
+  if (fighter.voice && typeof fighter.voice === 'object') {
+    clean.voice = {};
+    for (const [key, src] of Object.entries(fighter.voice)) {
+      const ok = safeAsset(src);
+      if (ok && ok.startsWith('assets/audio/')) clean.voice[key] = ok;
+    }
+  }
+  for (const key of ['name', 'title', 'specialName', 'rushName', 'rushQuote', 'superName', 'superQuote']) {
+    if (clean[key] != null) clean[key] = String(clean[key]).slice(0, 40);
+  }
+  return clean;
+}
 
 export function resolveFighterStats(fighter) {
   const arch = ARCHETYPES[fighter.archetype] || ARCHETYPES.shotokan;
