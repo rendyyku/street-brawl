@@ -6,7 +6,11 @@ import {
   STAGE_HEIGHT,
   STAGE_WIDTH,
   STATES,
+  TICK_RATE,
+  ULTIMATE_THEMES,
 } from './constants.js';
+
+const CODE_TOKENS = ['</>', 'claude>', '{ }', '0xFF', 'git!', '>>>', 'API', '⚡'];
 
 /**
  * 4x4 Sprite Sheet Grid Mapping (cell index 0..15):
@@ -64,6 +68,47 @@ export function getSpriteCellIndex(f) {
   }
 }
 
+export function getAnimationKeyForState(state) {
+  switch (state) {
+    case STATES.IDLE:
+      return 'idle';
+    case STATES.WALK_F:
+    case STATES.WALK_B:
+      return 'walk';
+    case STATES.LP:
+    case STATES.HP:
+    case STATES.UPPERCUT:
+      return 'punch';
+    case STATES.LK:
+    case STATES.HK:
+    case STATES.DASH_KICK:
+      return 'kick';
+    case STATES.SPECIAL:
+      return 'special';
+    case STATES.SUPER:
+      return 'ultimate';
+    case STATES.KO:
+    case STATES.KNOCKDOWN:
+      return 'ko';
+    case STATES.VICTORY:
+      return 'victory';
+    default:
+      return null;
+  }
+}
+
+function drawHeart(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, size * 0.35);
+  ctx.bezierCurveTo(-size, -size * 0.35, -size * 0.6, -size * 1.15, 0, -size * 0.45);
+  ctx.bezierCurveTo(size * 0.6, -size * 1.15, size, -size * 0.35, 0, size * 0.35);
+  ctx.fill();
+  ctx.restore();
+}
+
 export class GameRenderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -81,16 +126,27 @@ export class GameRenderer {
     this.stage = STAGES.find((s) => s.id === stageId) || STAGES[0];
   }
 
-  preloadFighter(fighter) {
-    if (!fighter?.spriteSheet) return;
-    if (this.spriteCache.has(fighter.spriteSheet)) return;
+  cacheImage(src) {
+    if (!src || this.spriteCache.has(src)) return;
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.src = fighter.spriteSheet;
-    this.spriteCache.set(fighter.spriteSheet, img);
+    img.src = src;
+    this.spriteCache.set(src, img);
   }
 
-  spawnHitSparks(x, y, color = '#facc15', count = 12, heavy = false) {
+  preloadFighter(fighter) {
+    if (!fighter) return;
+    this.cacheImage(fighter.spriteSheet);
+    this.cacheImage(fighter.portrait);
+    this.cacheImage(fighter.ultimateCutin);
+    if (fighter.animations && typeof fighter.animations === 'object') {
+      for (const anim of Object.values(fighter.animations)) {
+        if (anim?.src) this.cacheImage(anim.src);
+      }
+    }
+  }
+
+  spawnHitSparks(x, y, color = '#facc15', count = 12, heavy = false, style = 'spark') {
     for (let i = 0; i < count; i++) {
       const ang = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
       const spd = (heavy ? 7 : 4.5) + Math.random() * 5;
@@ -99,14 +155,14 @@ export class GameRenderer {
         y,
         vx: Math.cos(ang) * spd,
         vy: Math.sin(ang) * spd,
-        life: heavy ? 18 : 13,
-        maxLife: heavy ? 18 : 13,
-        size: heavy ? 7 + Math.random() * 6 : 4 + Math.random() * 4,
+        life: heavy ? 22 : 14,
+        maxLife: heavy ? 22 : 14,
+        size: heavy ? 8 + Math.random() * 6 : 4 + Math.random() * 4,
         color: i % 2 === 0 ? '#ffffff' : color,
-        kind: 'spark',
+        kind: style,
+        token: CODE_TOKENS[i % CODE_TOKENS.length],
       });
     }
-    // Impact ring
     this.particles.push({
       x,
       y,
@@ -139,22 +195,26 @@ export class GameRenderer {
   handleEvents(events, configs) {
     for (const ev of events) {
       if (ev.type === 'hit') {
-        const col = configs[ev.attacker]?.colors?.energy || '#facc15';
-        this.spawnHitSparks(ev.x, ev.y, col, ev.heavy ? 18 : 11, ev.heavy);
+        const atkCfg = configs[ev.attacker] || {};
+        const theme = ULTIMATE_THEMES[atkCfg.ultimateTheme] || ULTIMATE_THEMES.cyber;
+        const col = atkCfg.colors?.energy || theme.primary;
+        const style = ev.heavy ? theme.particleStyle : 'spark';
+        this.spawnHitSparks(ev.x, ev.y, col, ev.heavy ? 18 : 11, ev.heavy, style);
         this.shake = Math.max(this.shake, ev.heavy ? 12 : 6);
       } else if (ev.type === 'block') {
-        this.spawnHitSparks(ev.x, ev.y, '#38bdf8', 9, false);
+        this.spawnHitSparks(ev.x, ev.y, '#38bdf8', 9, false, 'spark');
         this.shake = Math.max(this.shake, 4);
       } else if (ev.type === 'projectile_clash') {
-        this.spawnHitSparks(ev.x, ev.y, '#facc15', 16, true);
+        this.spawnHitSparks(ev.x, ev.y, '#facc15', 16, true, 'spark');
         this.shake = Math.max(this.shake, 8);
       } else if (ev.type === 'jump' || ev.type === 'land') {
         this.spawnDust(ev.x, ev.y, 6);
       } else if (ev.type === 'ko') {
         this.shake = 18;
       } else if (ev.type === 'super_activate') {
-        this.spawnHitSparks(ev.x, ev.y, '#facc15', 22, true);
-        this.shake = 10;
+        const theme = ULTIMATE_THEMES[ev.ultimateTheme] || ULTIMATE_THEMES.cyber;
+        this.spawnHitSparks(ev.x, ev.y, theme.primary, 24, true, theme.particleStyle);
+        this.shake = 12;
       }
     }
   }
@@ -176,21 +236,6 @@ export class GameRenderer {
     // 1. Background stage
     this.drawStage(ctx);
 
-    // Super flash cinematic dark backdrop
-    if (engine.superFlash > 0) {
-      ctx.fillStyle = 'rgba(8, 6, 22, 0.72)';
-      ctx.fillRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
-      const owner = engine.fighters[engine.superFlashOwner];
-      if (owner) {
-        const grad = ctx.createRadialGradient(owner.x, owner.y - 95, 16, owner.x, owner.y - 95, 220);
-        grad.addColorStop(0, 'rgba(255,255,255,0.85)');
-        grad.addColorStop(0.4, (configs[owner.slot]?.colors?.energy || '#38bdf8') + 'aa');
-        grad.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
-      }
-    }
-
     // 2. Fighters (draw attacker on top)
     const order = engine.fighters[0].stateFrame < engine.fighters[1].stateFrame ? [1, 0] : [0, 1];
     for (const idx of order) {
@@ -205,9 +250,137 @@ export class GameRenderer {
     // 4. Particles
     this.updateAndDrawParticles(ctx);
 
-    // 5. In-canvas Combo Callouts & Round/KO Banners
+    // 5. Cinematic Ultimate Cut-In overlay (during superFlash)
+    if (engine.superFlash > 0 && engine.superFlashOwner >= 0) {
+      this.drawUltimateCutIn(ctx, engine, configs[engine.superFlashOwner]);
+    }
+
+    // 6. Combo Callouts & Round/KO Banners
     this.drawOverlays(ctx, engine, configs);
 
+    ctx.restore();
+  }
+
+  drawUltimateCutIn(ctx, engine, cfg) {
+    const theme = ULTIMATE_THEMES[cfg?.ultimateTheme] || ULTIMATE_THEMES.cyber;
+    const progress = 1 - engine.superFlash / 30;
+    const owner = engine.fighters[engine.superFlashOwner];
+
+    ctx.save();
+    // Darken full arena
+    ctx.fillStyle = 'rgba(6, 5, 16, 0.78)';
+    ctx.fillRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
+
+    // Glowing radial burst behind caster
+    if (owner) {
+      const g = ctx.createRadialGradient(owner.x, owner.y - 95, 14, owner.x, owner.y - 95, 240);
+      g.addColorStop(0, theme.core);
+      g.addColorStop(0.45, theme.primary + 'aa');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
+    }
+
+    // Full-width anime cut-in ribbon
+    const bandY = 152;
+    const bandH = 196;
+    const slideX = progress < 0.2 ? (1 - progress / 0.2) * -320 : 0;
+
+    ctx.save();
+    ctx.translate(slideX, 0);
+
+    const bandGrad = ctx.createLinearGradient(0, bandY, STAGE_WIDTH, bandY + bandH);
+    bandGrad.addColorStop(0, theme.bgTop);
+    bandGrad.addColorStop(0.55, theme.bgBottom);
+    bandGrad.addColorStop(1, theme.bgTop);
+    ctx.fillStyle = bandGrad;
+    ctx.fillRect(0, bandY, STAGE_WIDTH, bandH);
+
+    // Top & bottom neon accent borders
+    ctx.fillStyle = theme.accent;
+    ctx.fillRect(0, bandY, STAGE_WIDTH, 5);
+    ctx.fillRect(0, bandY + bandH - 5, STAGE_WIDTH, 5);
+
+    // Animated speedlines inside banner
+    ctx.strokeStyle = theme.secondary + '44';
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 16; i++) {
+      const ly = bandY + 14 + i * 12;
+      const offset = ((this.bgTick * 28 + i * 97) % (STAGE_WIDTH + 220)) - 220;
+      ctx.beginPath();
+      ctx.moveTo(offset, ly);
+      ctx.lineTo(offset + 180, ly);
+      ctx.stroke();
+    }
+
+    // Theme-specific live background motifs
+    if (theme.id === 'love') {
+      for (let i = 0; i < 14; i++) {
+        const hx = ((i * 83 + this.bgTick * 9) % (STAGE_WIDTH + 60)) - 30;
+        const hy = bandY + 28 + ((i * 47) % (bandH - 56));
+        drawHeart(ctx, hx, hy, 12 + (i % 3) * 5, i % 2 === 0 ? '#fda4af88' : '#fde04788');
+      }
+    } else if (theme.id === 'claude_code') {
+      ctx.font = '700 14px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.fillStyle = 'rgba(74, 222, 128, 0.28)';
+      const lines = [
+        '> claude --dangerously-skip-permissions',
+        'compiling ultimate_combo.ts ... 100%',
+        'tokens: 99,999 | context: OVERDRIVE',
+        'git push origin main --force-with-lease',
+        '✓ 0 errors, MAXIMUM DAMAGE DEPLOYED',
+      ];
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], 300 + (i % 2) * 40, bandY + 36 + i * 32);
+      }
+    }
+
+    // Cut-in artwork (uses custom 16:9 ultimateCutin if generated by ChatGPT Plus, else crisp portrait)
+    const cutinImg = cfg?.ultimateCutin ? this.spriteCache.get(cfg.ultimateCutin) : null;
+    const portImg = cfg?.portrait ? this.spriteCache.get(cfg.portrait) : null;
+    if (cutinImg && cutinImg.complete && cutinImg.naturalWidth > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, bandY + 5, STAGE_WIDTH, bandH - 10);
+      ctx.clip();
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(cutinImg, 28, bandY + 5, 340, bandH - 10);
+      ctx.restore();
+    } else if (portImg && portImg.complete && portImg.naturalWidth > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(165, bandY + bandH / 2, 78, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(portImg, 87, bandY + bandH / 2 - 78, 156, 156);
+      ctx.restore();
+      ctx.strokeStyle = theme.accent;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(165, bandY + bandH / 2, 78, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Ultimate Title & Quote Typography
+    ctx.textAlign = 'left';
+    ctx.fillStyle = theme.accent;
+    ctx.font = '900 18px ui-monospace, system-ui, sans-serif';
+    ctx.fillText(theme.bannerTag, 290, bandY + 52);
+
+    ctx.font = 'italic 900 50px system-ui, sans-serif';
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = '#09090b';
+    ctx.fillStyle = theme.core;
+    const title = cfg?.superName || 'ULTIMATE BLAST';
+    ctx.strokeText(title, 286, bandY + 114);
+    ctx.fillText(title, 286, bandY + 114);
+
+    if (cfg?.superQuote) {
+      ctx.font = '800 20px ui-monospace, system-ui, sans-serif';
+      ctx.fillStyle = theme.secondary;
+      ctx.fillText(cfg.superQuote, 290, bandY + 156);
+    }
+
+    ctx.restore();
     ctx.restore();
   }
 
@@ -220,7 +393,6 @@ export class GameRenderer {
     ctx.fillRect(0, 0, STAGE_WIDTH, GROUND_Y);
 
     if (s.id === 'neon-alley') {
-      // City skyline silhouette + glowing neon signs
       ctx.fillStyle = '#15122b';
       const buildings = [
         [20, 140, 90], [120, 100, 110], [250, 170, 80], [360, 115, 130],
@@ -236,7 +408,6 @@ export class GameRenderer {
         }
         ctx.fillStyle = '#15122b';
       }
-      // Neon arcade signs
       const pulse = 0.75 + Math.sin(this.bgTick * 0.08) * 0.25;
       ctx.save();
       ctx.shadowBlur = 18;
@@ -255,7 +426,6 @@ export class GameRenderer {
       ctx.fillText('STREET BRAWL', 698, 227);
       ctx.restore();
     } else if (s.id === 'sunset-temple') {
-      // Giant crimson sun
       const sunGrad = ctx.createRadialGradient(480, 290, 10, 480, 290, 120);
       sunGrad.addColorStop(0, '#fef08a');
       sunGrad.addColorStop(0.55, '#fb923c');
@@ -265,26 +435,22 @@ export class GameRenderer {
       ctx.arc(480, 290, 120, 0, Math.PI * 2);
       ctx.fill();
 
-      // Traditional brick Candi / Temple silhouette inspired by the user's photo!
       ctx.fillStyle = '#2b1318';
       ctx.fillRect(360, 240, 240, GROUND_Y - 240);
       ctx.fillRect(390, 190, 180, 55);
       ctx.fillRect(425, 145, 110, 50);
       ctx.fillRect(455, 112, 50, 38);
-      // Warm terracotta brick accent blocks
       ctx.fillStyle = '#7c2d12';
       ctx.fillRect(380, 260, 200, 180);
       ctx.fillStyle = '#2b1318';
       ctx.fillRect(442, 320, 76, 148);
     } else {
-      // Harbor Arena: moonlight, ocean shimmer, container cranes
       ctx.fillStyle = '#e0f2fe';
       ctx.beginPath();
       ctx.arc(760, 110, 34, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#0c2d48';
       ctx.fillRect(0, 340, STAGE_WIDTH, GROUND_Y - 340);
-      // Shipping containers
       const boxes = [
         [60, 285, 130, 80, '#dc2626'],
         [195, 295, 110, 70, '#2563eb'],
@@ -299,7 +465,6 @@ export class GameRenderer {
       }
     }
 
-    // Arcade Floor with perspective lines
     ctx.fillStyle = s.floorColor;
     ctx.fillRect(0, GROUND_Y, STAGE_WIDTH, STAGE_HEIGHT - GROUND_Y);
 
@@ -322,19 +487,17 @@ export class GameRenderer {
   }
 
   drawFighter(ctx, f, config) {
-    // Ground shadow
     const airRatio = Math.max(0.35, 1 - (GROUND_Y - f.y) / 260);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
     ctx.beginPath();
     ctx.ellipse(f.x, GROUND_Y + 6, 56 * airRatio, 13 * airRatio, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Super aura glow if meter full or doing super
     if (f.superMeter >= MAX_SUPER || f.state === STATES.SUPER) {
-      const auraCol = config?.colors?.energy || '#38bdf8';
+      const theme = ULTIMATE_THEMES[config?.ultimateTheme] || ULTIMATE_THEMES.cyber;
       const pulse = 0.25 + Math.sin(this.bgTick * 0.2) * 0.12;
       const g = ctx.createRadialGradient(f.x, f.y - 90, 12, f.x, f.y - 90, 110);
-      g.addColorStop(0, auraCol + '66');
+      g.addColorStop(0, theme.primary + '77');
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.save();
       ctx.globalAlpha = pulse + 0.35;
@@ -345,63 +508,61 @@ export class GameRenderer {
       ctx.restore();
     }
 
-    const img = config?.spriteSheet ? this.spriteCache.get(config.spriteSheet) : null;
-    if (img && img.complete && img.naturalWidth > 0) {
+    // 1) Try optional multi-frame horizontal strip for this action first
+    const animKey = getAnimationKeyForState(f.state);
+    const stripCfg = animKey && config?.animations ? config.animations[animKey] : null;
+    const stripImg = stripCfg?.src ? this.spriteCache.get(stripCfg.src) : null;
+    const baseImg = config?.spriteSheet ? this.spriteCache.get(config.spriteSheet) : null;
+
+    const drawW = 216;
+    const drawH = 216;
+    let scaleX = 1;
+    let scaleY = 1;
+    let offsetX = 0;
+    let offsetY = 10;
+
+    if (f.state === STATES.HITSTUN && f.stateFrame < 8) {
+      offsetX = f.stateFrame % 2 === 0 ? -5 : 5;
+    } else if (f.state === STATES.UPPERCUT && f.stateFrame >= 4 && f.stateFrame < 14) {
+      scaleY = 1.07;
+      scaleX = 0.94;
+    } else if (f.state === STATES.DASH_KICK) {
+      scaleX = 1.08;
+    }
+
+    ctx.save();
+    ctx.translate(f.x + offsetX, f.y + offsetY);
+    ctx.scale(f.facing * scaleX, scaleY);
+
+    if (f.state === STATES.HITSTUN && f.stateFrame < 4) {
+      ctx.filter = 'brightness(2.2)';
+    } else if (f.invincibleFrames > 0 && f.state === STATES.WAKEUP && f.stateFrame % 4 < 2) {
+      ctx.globalAlpha = 0.65;
+    }
+
+    if (stripImg && stripImg.complete && stripImg.naturalWidth > 0) {
+      const frames = Math.max(1, stripCfg.frames || 6);
+      const fps = stripCfg.fps || 12;
+      const ticksPerFrame = Math.max(1, Math.round(TICK_RATE / fps));
+      const loop = animKey === 'idle' || animKey === 'walk';
+      const rawIdx = Math.floor(f.stateFrame / ticksPerFrame);
+      const idx = loop ? rawIdx % frames : Math.min(frames - 1, rawIdx);
+      const fw = stripImg.naturalWidth / frames;
+      const fh = stripImg.naturalHeight;
+      ctx.drawImage(stripImg, idx * fw, 0, fw, fh, -drawW / 2, -drawH, drawW, drawH);
+    } else if (baseImg && baseImg.complete && baseImg.naturalWidth > 0) {
       const cell = getSpriteCellIndex(f);
       const col = cell % 4;
       const row = Math.floor(cell / 4);
-      const cw = img.naturalWidth / 4;
-      const ch = img.naturalHeight / 4;
-
-      // Draw size calibrated to arcade fighting scale (chibi fighters ~210px tall)
-      const drawW = 216;
-      const drawH = 216;
-
-      // Subtle squash/stretch + hit shake
-      let scaleX = 1;
-      let scaleY = 1;
-      let offsetX = 0;
-      let offsetY = 10; // aligns sprite feet cleanly onto GROUND_Y
-
-      if (f.state === STATES.HITSTUN && f.stateFrame < 8) {
-        offsetX = (f.stateFrame % 2 === 0 ? -5 : 5);
-      } else if (f.state === STATES.UPPERCUT && f.stateFrame >= 4 && f.stateFrame < 14) {
-        scaleY = 1.07;
-        scaleX = 0.94;
-      } else if (f.state === STATES.DASH_KICK) {
-        scaleX = 1.08;
-      }
-
-      ctx.save();
-      ctx.translate(f.x + offsetX, f.y + offsetY);
-      ctx.scale(f.facing * scaleX, scaleY);
-
-      // Flash white on hit impact or invincible wakeup
-      if (f.state === STATES.HITSTUN && f.stateFrame < 4) {
-        ctx.filter = 'brightness(2.2)';
-      } else if (f.invincibleFrames > 0 && f.state === STATES.WAKEUP && f.stateFrame % 4 < 2) {
-        ctx.globalAlpha = 0.65;
-      }
-
-      ctx.drawImage(
-        img,
-        col * cw,
-        row * ch,
-        cw,
-        ch,
-        -drawW / 2,
-        -drawH,
-        drawW,
-        drawH
-      );
-      ctx.restore();
+      const cw = baseImg.naturalWidth / 4;
+      const ch = baseImg.naturalHeight / 4;
+      ctx.drawImage(baseImg, col * cw, row * ch, cw, ch, -drawW / 2, -drawH, drawW, drawH);
     } else {
-      // Fallback placeholder silhouette while image loads
       ctx.fillStyle = config?.colors?.primary || '#e11d48';
-      ctx.fillRect(f.x - 32, f.y - 140, 64, 140);
+      ctx.fillRect(-32, -140, 64, 140);
     }
+    ctx.restore();
 
-    // Block shield visual
     if (f.state === STATES.BLOCK || f.state === STATES.CROUCH_BLOCK) {
       ctx.save();
       ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
@@ -414,16 +575,91 @@ export class GameRenderer {
   }
 
   drawProjectile(ctx, proj, ownerCfg) {
-    const col = ownerCfg?.colors?.energy || '#38bdf8';
-    const core = ownerCfg?.colors?.energyCore || '#ffffff';
     const dir = proj.vx >= 0 ? 1 : -1;
     const r = proj.radius;
+
+    // Themed Ultimate Projectiles!
+    if (proj.isSuper && proj.ultimateTheme === 'love') {
+      ctx.save();
+      ctx.translate(proj.x, proj.y);
+      ctx.scale(dir, 1);
+
+      const beamGrad = ctx.createLinearGradient(-r * 3.8, 0, r, 0);
+      beamGrad.addColorStop(0, 'rgba(244, 63, 94, 0)');
+      beamGrad.addColorStop(0.6, 'rgba(253, 164, 175, 0.85)');
+      beamGrad.addColorStop(1, '#f43f5e');
+      ctx.fillStyle = beamGrad;
+      ctx.beginPath();
+      ctx.moveTo(-r * 3.8, 0);
+      ctx.lineTo(0, -r * 1.15);
+      ctx.lineTo(0, r * 1.15);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.shadowBlur = 32;
+      ctx.shadowColor = '#f43f5e';
+      drawHeart(ctx, 0, 12, r * 1.25, '#f43f5e');
+      drawHeart(ctx, 4, 8, r * 0.8, '#fda4af');
+      drawHeart(ctx, 6, 4, r * 0.45, '#fff1f2');
+
+      // Orbiting mini hearts
+      for (let i = 0; i < 4; i++) {
+        const ang = this.bgTick * 0.25 + (i * Math.PI) / 2;
+        drawHeart(ctx, -r * 0.9 + Math.cos(ang) * 28, Math.sin(ang) * 38, 12, '#fde047');
+      }
+      ctx.restore();
+      return;
+    }
+
+    if (proj.isSuper && proj.ultimateTheme === 'claude_code') {
+      ctx.save();
+      ctx.translate(proj.x, proj.y);
+
+      const beamGrad = ctx.createLinearGradient(-dir * r * 4, 0, dir * r, 0);
+      beamGrad.addColorStop(0, 'rgba(217, 119, 87, 0)');
+      beamGrad.addColorStop(0.55, 'rgba(217, 119, 87, 0.9)');
+      beamGrad.addColorStop(1, '#fef3c7');
+      ctx.fillStyle = beamGrad;
+      ctx.fillRect(dir > 0 ? -r * 4 : -r, -r * 0.82, r * 5, r * 1.64);
+
+      ctx.shadowBlur = 30;
+      ctx.shadowColor = '#d97757';
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = '#d97757';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.roundRect(-r * 0.95, -r * 0.72, r * 1.9, r * 1.44, 14);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#4ade80';
+      ctx.font = '900 18px ui-monospace, Menlo, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('> CLAUDE', 0, -10);
+      ctx.fillStyle = '#fef3c7';
+      ctx.font = '800 13px ui-monospace, Menlo, monospace';
+      ctx.fillText('CODE // ⚡', 0, 12);
+
+      // Orbiting floating code tokens
+      ctx.font = '800 14px ui-monospace, monospace';
+      for (let i = 0; i < 4; i++) {
+        const ang = this.bgTick * 0.22 + (i * Math.PI) / 2;
+        ctx.fillStyle = i % 2 === 0 ? '#4ade80' : '#f59e0b';
+        ctx.fillText(CODE_TOKENS[(i + Math.floor(this.bgTick / 6)) % CODE_TOKENS.length], Math.cos(ang) * 58, Math.sin(ang) * 48);
+      }
+      ctx.restore();
+      return;
+    }
+
+    // Standard Special or Generic Super Projectile
+    const col = ownerCfg?.colors?.energy || '#38bdf8';
+    const core = ownerCfg?.colors?.energyCore || '#ffffff';
 
     ctx.save();
     ctx.translate(proj.x, proj.y);
     ctx.scale(dir, 1);
 
-    // Comet energy tail
     const tailGrad = ctx.createLinearGradient(-r * 2.8, 0, r, 0);
     tailGrad.addColorStop(0, 'rgba(0,0,0,0)');
     tailGrad.addColorStop(1, col);
@@ -435,7 +671,6 @@ export class GameRenderer {
     ctx.closePath();
     ctx.fill();
 
-    // Outer glow orb
     ctx.shadowBlur = proj.isSuper ? 28 : 16;
     ctx.shadowColor = col;
     ctx.fillStyle = col;
@@ -443,7 +678,6 @@ export class GameRenderer {
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
 
-    // Hot white core
     ctx.fillStyle = core;
     ctx.beginPath();
     ctx.arc(r * 0.15, 0, r * 0.58, 0, Math.PI * 2);
@@ -467,6 +701,12 @@ export class GameRenderer {
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
         ctx.stroke();
+      } else if (p.kind === 'heart') {
+        drawHeart(ctx, p.x, p.y, p.size * (0.7 + alpha * 0.5), p.color);
+      } else if (p.kind === 'code') {
+        ctx.fillStyle = p.color;
+        ctx.font = `900 ${Math.round(11 + p.size * 0.6)}px ui-monospace, monospace`;
+        ctx.fillText(p.token || '</>', p.x, p.y);
       } else if (p.kind === 'spark') {
         ctx.fillStyle = p.color;
         ctx.beginPath();
@@ -484,7 +724,6 @@ export class GameRenderer {
   }
 
   drawOverlays(ctx, engine, configs) {
-    // Combo counters
     for (let i = 0; i < 2; i++) {
       const f = engine.fighters[i];
       if (f.comboCount >= 2 && f.comboTimer > 0) {
@@ -505,7 +744,6 @@ export class GameRenderer {
       }
     }
 
-    // Center Round / FIGHT / K.O. Banner
     if (engine.bannerText) {
       ctx.save();
       ctx.textAlign = 'center';

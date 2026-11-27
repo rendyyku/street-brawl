@@ -195,7 +195,7 @@ function handleAudioAndFx(events) {
     else if (ev.type === 'attack_whiff') state.audio.playWhiff();
     else if (ev.type === 'projectile_spawn') state.audio.playFireball();
     else if (ev.type === 'uppercut') state.audio.playUppercut();
-    else if (ev.type === 'super_activate') state.audio.playSuper();
+    else if (ev.type === 'super_activate') state.audio.playSuper(ev.ultimateTheme);
     else if (ev.type === 'fight_start') state.audio.playFight();
     else if (ev.type === 'ko') state.audio.playKO();
   }

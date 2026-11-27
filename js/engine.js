@@ -485,15 +485,24 @@ export class FightingEngine {
     }
     if (moveState === STATES.SUPER) {
       f.superMeter = Math.max(0, f.superMeter - MAX_SUPER);
-      this.superFlash = 18;
+      this.superFlash = 30;
       this.superFlashOwner = f.slot;
-      this.emit('super_activate', { slot: f.slot, x: f.x, y: f.y - 90, name: f.name });
+      const cfg = this.configs[f.slot] || {};
+      this.emit('super_activate', {
+        slot: f.slot,
+        x: f.x,
+        y: f.y - 90,
+        name: f.name,
+        superName: cfg.superName || 'ULTIMATE BLAST',
+        ultimateTheme: cfg.ultimateTheme || 'cyber',
+      });
     } else {
       this.emit('attack_whiff', { slot: f.slot, move: moveState });
     }
   }
 
   spawnProjectile(f, move) {
+    const cfg = this.configs[f.slot] || {};
     const proj = {
       id: this.nextProjId++,
       owner: f.slot,
@@ -509,17 +518,26 @@ export class FightingEngine {
       hitstop: move.hitstop,
       knockdown: Boolean(move.knockdown),
       isSuper: Boolean(move.isSuperProjectile),
-      hitsLeft: move.isSuperProjectile ? 3 : 1,
-      life: 110,
+      ultimateTheme: move.isSuperProjectile ? (cfg.ultimateTheme || 'cyber') : null,
+      hitsLeft: move.isSuperProjectile ? 5 : 1,
+      hitCooldown: 0,
+      life: move.isSuperProjectile ? 130 : 110,
     };
     this.projectiles.push(proj);
-    this.emit('projectile_spawn', { slot: f.slot, x: proj.x, y: proj.y, isSuper: proj.isSuper });
+    this.emit('projectile_spawn', {
+      slot: f.slot,
+      x: proj.x,
+      y: proj.y,
+      isSuper: proj.isSuper,
+      ultimateTheme: proj.ultimateTheme,
+    });
   }
 
   updateProjectiles() {
     for (const p of this.projectiles) {
       p.x += p.vx;
       p.life -= 1;
+      if (p.hitCooldown > 0) p.hitCooldown -= 1;
     }
 
     // Projectile vs Projectile clash
@@ -667,12 +685,13 @@ export class FightingEngine {
 
     // Projectile hits
     for (const p of this.projectiles) {
-      if (p.hitsLeft <= 0) continue;
+      if (p.hitsLeft <= 0 || p.hitCooldown > 0) continue;
       const atk = this.fighters[p.owner];
       const def = this.fighters[1 - p.owner];
       const pbox = { x: p.x - p.radius, y: p.y - p.radius, w: p.radius * 2, h: p.radius * 2 };
       const hurt = this.getHurtbox(def);
       if (rectsOverlap(pbox, hurt)) {
+        const isLastHit = p.hitsLeft === 1;
         const hit = this.applyHit(
           atk,
           def,
@@ -682,9 +701,9 @@ export class FightingEngine {
             chipDamage: p.chipDamage,
             hitstun: p.hitstun,
             blockstun: p.blockstun,
-            pushback: p.pushback,
+            pushback: isLastHit ? p.pushback * 2.2 : p.pushback,
             hitstop: p.hitstop,
-            knockdown: p.knockdown,
+            knockdown: p.knockdown && isLastHit,
             superGain: p.isSuper ? 0 : 8,
             hitLevel: 'mid',
           },
@@ -693,6 +712,7 @@ export class FightingEngine {
         );
         if (hit) {
           p.hitsLeft -= 1;
+          p.hitCooldown = p.isSuper ? 4 : 0;
         }
       }
     }
@@ -807,6 +827,7 @@ export class FightingEngine {
         vx: p.vx,
         radius: p.radius,
         isSuper: p.isSuper,
+        ultimateTheme: p.ultimateTheme || null,
         hitsLeft: p.hitsLeft,
         life: p.life,
       })),
