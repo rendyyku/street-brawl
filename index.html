@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0b1a" />
+  <title>STREET BRAWL — 2D Arcade Fighting</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
+</head>
+<body>
+  <div id="app">
+    <!-- TITLE SCREEN -->
+    <section id="screen-title" class="screen active">
+      <div class="title-bg-glow"></div>
+      <div class="title-content">
+        <div class="title-badge">2D ARCADE FIGHTER • MOBILE &amp; ONLINE</div>
+        <h1 class="game-logo">STREET<span>BRAWL</span></h1>
+        <div class="title-showcase">
+          <img src="assets/fighters/nadia_portrait.webp" alt="Nadia" class="showcase-card left" />
+          <div class="showcase-vs">VS</div>
+          <img src="assets/fighters/rendy_portrait.webp" alt="Rendy" class="showcase-card right" />
+        </div>
+        <div class="mode-grid">
+          <button class="btn btn-primary btn-lg" id="btn-mode-cpu">
+            <span class="btn-title">VS CPU</span>
+            <span class="btn-sub">Arcade Solo • 3 Level AI</span>
+          </button>
+          <button class="btn btn-online btn-lg" id="btn-mode-online">
+            <span class="btn-title">ONLINE MABAR</span>
+            <span class="btn-sub">Room Code • WebRTC P2P</span>
+          </button>
+          <button class="btn btn-secondary" id="btn-mode-local">
+            <span class="btn-title">LOCAL 2P</span>
+            <span class="btn-sub">Keyboard 1 Layar</span>
+          </button>
+          <button class="btn btn-accent" id="btn-open-importer">
+            <span class="btn-title">+ KARAKTER</span>
+            <span class="btn-sub">Upload Sprite 4×4</span>
+          </button>
+        </div>
+        <p class="title-tip">Tip: Tahan arah mundur untuk <strong>BLOCK</strong> • Arah + <strong>SP</strong> untuk Uppercut / Dash Kick!</p>
+      </div>
+    </section>
+
+    <!-- ONLINE MABAR LOBBY -->
+    <section id="screen-online" class="screen">
+      <div class="panel">
+        <div class="panel-header">
+          <button class="btn-icon" id="btn-online-back">&larr;</button>
+          <h2>ONLINE MABAR</h2>
+          <span class="pill">P2P</span>
+        </div>
+
+        <div class="online-box">
+          <button class="btn btn-online btn-block" id="btn-create-room">BUAT ROOM BARU</button>
+          <div id="host-room-info" class="room-code-box hidden">
+            <div class="room-label">KODE ROOM KAMU</div>
+            <div class="room-code" id="display-room-code">----</div>
+            <div class="room-actions">
+              <button class="btn btn-secondary btn-sm" id="btn-copy-link">Salin Link Invite</button>
+            </div>
+          </div>
+
+          <div class="divider"><span>ATAU GABUNG ROOM TEMAN</span></div>
+
+          <div class="join-row">
+            <input type="text" id="input-room-code" maxlength="4" placeholder="KODE (4 HURUF)" autocomplete="off" />
+            <button class="btn btn-primary" id="btn-join-room">GABUNG</button>
+          </div>
+
+          <div id="online-status" class="status-text">Pilih Buat Room atau masukkan kode dari temanmu.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHARACTER & STAGE SELECT -->
+    <section id="screen-select" class="screen">
+      <div class="panel select-panel">
+        <div class="panel-header">
+          <button class="btn-icon" id="btn-select-back">&larr;</button>
+          <h2 id="select-title">PILIH KARAKTER</h2>
+          <button class="btn btn-accent btn-xs" id="btn-select-add">+ Karakter</button>
+        </div>
+
+        <div class="vs-preview">
+          <div class="slot-card p1">
+            <span class="slot-tag">P1</span>
+            <img id="p1-select-img" src="assets/fighters/nadia_portrait.webp" alt="P1" />
+            <div class="slot-name" id="p1-select-name">NADIA</div>
+            <div class="slot-move" id="p1-select-move">WISUDA WAVE</div>
+          </div>
+          <div class="vs-bolt">VS</div>
+          <div class="slot-card p2">
+            <span class="slot-tag" id="p2-slot-tag">CPU</span>
+            <img id="p2-select-img" src="assets/fighters/rendy_portrait.webp" alt="P2" />
+            <div class="slot-name" id="p2-select-name">RENDY</div>
+            <div class="slot-move" id="p2-select-move">API KAMPUNG</div>
+          </div>
+        </div>
+
+        <div class="select-target-tabs" id="select-target-tabs">
+          <button class="tab-btn active" data-slot="0">Pilih P1</button>
+          <button class="tab-btn" data-slot="1" id="tab-slot-p2">Pilih Lawan</button>
+        </div>
+
+        <div id="roster-grid" class="roster-grid"></div>
+
+        <div class="select-options">
+          <div class="opt-group" id="cpu-diff-group">
+            <label>AI Level</label>
+            <div class="chip-row" id="diff-chips">
+              <button class="chip" data-diff="easy">Easy</button>
+              <button class="chip active" data-diff="normal">Normal</button>
+              <button class="chip" data-diff="hard">Hard</button>
+            </div>
+          </div>
+          <div class="opt-group">
+            <label>Arena</label>
+            <div class="chip-row" id="stage-chips"></div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-block btn-fight" id="btn-start-fight">FIGHT!</button>
+      </div>
+    </section>
+
+    <!-- SPRITE SHEET IMPORTER MODAL -->
+    <div id="modal-importer" class="modal hidden">
+      <div class="modal-card">
+        <div class="panel-header">
+          <h2>TAMBAH KARAKTER (4×4)</h2>
+          <button class="btn-icon" id="btn-close-importer">&times;</button>
+        </div>
+        <p class="modal-desc">
+          Upload sprite sheet 4×4 background <strong>#FF00FF</strong> (hasil ChatGPT Plus / Gemini). Background otomatis terhapus!
+        </p>
+
+        <div class="importer-body">
+          <div class="importer-preview-wrap">
+            <canvas id="importer-preview-canvas" width="180" height="180"></canvas>
+            <label class="btn btn-secondary btn-sm file-btn">
+              Pilih Gambar Sprite Sheet
+              <input type="file" id="input-sprite-file" accept="image/*" hidden />
+            </label>
+          </div>
+          <div class="importer-fields">
+            <label>Nama Fighter
+              <input type="text" id="imp-name" maxlength="12" placeholder="MISAL: BUDI" />
+            </label>
+            <label>Nama Jurus Special
+              <input type="text" id="imp-special" maxlength="18" placeholder="HADOU WAVE" />
+            </label>
+            <label>Gaya Bertarung
+              <select id="imp-archetype">
+                <option value="shotokan">Balanced (Shotokan)</option>
+                <option value="striker">Power Striker</option>
+                <option value="speedster">Speed Ninja</option>
+                <option value="brawler">Street Brawler</option>
+              </select>
+            </label>
+            <label>Warna Energi Jurus
+              <input type="color" id="imp-energy" value="#38bdf8" />
+            </label>
+          </div>
+        </div>
+
+        <div id="importer-status" class="status-text"></div>
+        <button class="btn btn-primary btn-block" id="btn-save-custom" disabled>SIMPAN KE ROSTER</button>
+      </div>
+    </div>
+
+    <!-- BATTLE ARENA SCREEN -->
+    <section id="screen-battle" class="screen battle-screen">
+      <!-- Top Arcade HUD -->
+      <header class="hud">
+        <div class="hud-player p1">
+          <img id="hud-p1-portrait" class="hud-portrait" src="assets/fighters/nadia_portrait.webp" alt="P1" />
+          <div class="hud-bars">
+            <div class="hud-top-row">
+              <span class="hud-name" id="hud-p1-name">NADIA</span>
+              <div class="round-orbs" id="hud-p1-orbs">
+                <span class="orb"></span><span class="orb"></span>
+              </div>
+            </div>
+            <div class="hp-track">
+              <div class="hp-trail" id="hud-p1-trail"></div>
+              <div class="hp-fill" id="hud-p1-hp"></div>
+            </div>
+            <div class="super-track">
+              <div class="super-fill" id="hud-p1-super"></div>
+              <span class="super-label" id="hud-p1-super-label">SUPER</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hud-center">
+          <div class="timer-box" id="hud-timer">99</div>
+          <div class="hud-meta">
+            <span id="hud-ping" class="ping-badge hidden">0ms</span>
+            <button class="hud-mini-btn" id="btn-mute" title="Suara">SFX</button>
+            <button class="hud-mini-btn" id="btn-exit-battle" title="Menu">MENU</button>
+          </div>
+        </div>
+
+        <div class="hud-player p2">
+          <div class="hud-bars">
+            <div class="hud-top-row">
+              <div class="round-orbs" id="hud-p2-orbs">
+                <span class="orb"></span><span class="orb"></span>
+              </div>
+              <span class="hud-name" id="hud-p2-name">RENDY</span>
+            </div>
+            <div class="hp-track">
+              <div class="hp-trail" id="hud-p2-trail"></div>
+              <div class="hp-fill" id="hud-p2-hp"></div>
+            </div>
+            <div class="super-track">
+              <div class="super-fill" id="hud-p2-super"></div>
+              <span class="super-label" id="hud-p2-super-label">SUPER</span>
+            </div>
+          </div>
+          <img id="hud-p2-portrait" class="hud-portrait" src="assets/fighters/rendy_portrait.webp" alt="P2" />
+        </div>
+      </header>
+
+      <!-- Main Fighting Canvas -->
+      <div class="arena-wrap">
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Match Over Overlay -->
+        <div id="battle-result" class="result-overlay hidden">
+          <div class="result-card">
+            <div class="result-badge">MATCH COMPLETE</div>
+            <img id="result-winner-img" src="" alt="Winner" />
+            <h2 id="result-winner-name">NADIA WINS!</h2>
+            <div class="result-actions">
+              <button class="btn btn-primary" id="btn-rematch">REMATCH</button>
+              <button class="btn btn-secondary" id="btn-back-select">PILIH KARAKTER</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mobile-First Multi-Touch Arcade Controls -->
+      <div class="touch-controls" id="touch-controls">
+        <div class="dpad-zone" id="dpad-zone">
+          <div class="dpad-ring">
+            <span class="dpad-arrow up">&#9650;</span>
+            <span class="dpad-arrow down">&#9660;</span>
+            <span class="dpad-arrow left">&#9664;</span>
+            <span class="dpad-arrow right">&#9654;</span>
+            <div class="dpad-knob" id="dpad-knob"></div>
+          </div>
+        </div>
+
+        <div class="action-pad" id="action-pad">
+          <button class="arc-btn btn-lp" data-action="lp"><span>LP</span><small>Jab</small></button>
+          <button class="arc-btn btn-hp" data-action="hp"><span>HP</span><small>Hook</small></button>
+          <button class="arc-btn btn-sp" data-action="sp"><span>SP</span><small>Jurus</small></button>
+          <button class="arc-btn btn-lk" data-action="lk"><span>LK</span><small>Low</small></button>
+          <button class="arc-btn btn-hk" data-action="hk"><span>HK</span><small>Kick</small></button>
+          <button class="arc-btn btn-sup" data-action="sup" id="btn-touch-super"><span>ULT</span><small>Super</small></button>
+        </div>
+      </div>
+
+      <div class="desktop-keys-hint">
+        P1: <strong>WASD</strong> Gerak • <strong>J/U</strong> Pukul • <strong>K/I</strong> Tendang • <strong>L</strong> Jurus • <strong>O</strong> Super |
+        P2 (Local): <strong>Panah</strong> + <strong>Numpad 1-6</strong>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
