@@ -245,9 +245,14 @@ function syncHud() {
 
   if (eng.phase === 'match_over' && !state.resultShown) {
     state.resultShown = true;
-    const winF = eng.winnerSlot === 1 ? state.p2Fighter : state.p1Fighter;
-    $('result-winner-img').src = winF.portrait;
-    $('result-winner-name').textContent = `${winF.name} WINS!`;
+    if (eng.winnerSlot === -1) {
+      $('result-winner-img').src = state.p1Fighter.portrait;
+      $('result-winner-name').textContent = 'DRAW MATCH!';
+    } else {
+      const winF = eng.winnerSlot === 1 ? state.p2Fighter : state.p1Fighter;
+      $('result-winner-img').src = winF.portrait;
+      $('result-winner-name').textContent = `${winF.name} WINS!`;
+    }
     $('battle-result').classList.remove('hidden');
   }
 }
