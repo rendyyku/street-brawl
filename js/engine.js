@@ -56,6 +56,7 @@ function createFighterState(slot, config) {
     roundsWon: 0,
     prevButtons: { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false },
     bufferedButtons: { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false },
+    bufferedSpDir: null,
   };
 }
 
@@ -183,6 +184,14 @@ export class FightingEngine {
         for (const key of ['lp', 'hp', 'lk', 'hk', 'sp', 'sup']) {
           if (inp[key] && !f.prevButtons[key]) {
             f.bufferedButtons[key] = true;
+            if (key === 'sp') {
+              f.bufferedSpDir = {
+                left: Boolean(inp.left),
+                right: Boolean(inp.right),
+                up: Boolean(inp.up),
+                down: Boolean(inp.down),
+              };
+            }
           }
           f.prevButtons[key] = Boolean(inp[key]);
         }
@@ -307,7 +316,9 @@ export class FightingEngine {
       sp: Boolean((input.sp && !f.prevButtons.sp) || f.bufferedButtons.sp),
       sup: Boolean((input.sup && !f.prevButtons.sup) || f.bufferedButtons.sup),
     };
+    const spDir = f.bufferedButtons.sp && f.bufferedSpDir ? f.bufferedSpDir : input;
     f.bufferedButtons = { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false };
+    f.bufferedSpDir = null;
     f.prevButtons = {
       lp: Boolean(input.lp),
       hp: Boolean(input.hp),
@@ -362,7 +373,9 @@ export class FightingEngine {
         if (pressed.sup && f.superMeter >= MAX_SUPER) {
           this.startMove(f, STATES.SUPER);
         } else if (pressed.sp) {
-          this.startSpecial(f, holdingForward, holdingBack, input.up, input.down);
+          const spForward = (f.facing === 1 && spDir.right) || (f.facing === -1 && spDir.left);
+          const spBack = (f.facing === 1 && spDir.left) || (f.facing === -1 && spDir.right);
+          this.startSpecial(f, spForward, spBack, spDir.up, spDir.down);
         }
       }
 
@@ -384,7 +397,9 @@ export class FightingEngine {
       if (pressed.sup && f.superMeter >= MAX_SUPER && grounded) {
         this.startMove(f, STATES.SUPER);
       } else if (pressed.sp && grounded) {
-        this.startSpecial(f, holdingForward, holdingBack, input.up, input.down);
+        const spForward = (f.facing === 1 && spDir.right) || (f.facing === -1 && spDir.left);
+        const spBack = (f.facing === 1 && spDir.left) || (f.facing === -1 && spDir.right);
+        this.startSpecial(f, spForward, spBack, spDir.up, spDir.down);
       } else if (pressed.hp) {
         this.startMove(f, STATES.HP);
       } else if (pressed.hk) {
