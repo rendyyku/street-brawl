@@ -171,13 +171,19 @@ export class OnlineMabar {
         this.cb.onRemoteSelect?.(msg.fighter, msg.stageId);
         break;
       case 'start_match':
-        this.cb.onStartMatch?.(msg.p1Fighter, msg.p2Fighter, msg.stageId);
+        if (this.role === 'guest') {
+          this.cb.onStartMatch?.(msg.p1Fighter, msg.p2Fighter, msg.stageId);
+        }
         break;
       case 'inp':
-        this.remoteInput = unpackInput(msg.b || 0);
+        if (this.role === 'host') {
+          this.remoteInput = unpackInput(msg.b || 0);
+        }
         break;
       case 'state':
-        this.cb.onStateSync?.(msg.s, msg.e || []);
+        if (this.role === 'guest') {
+          this.cb.onStateSync?.(msg.s, msg.e || []);
+        }
         break;
       case 'rematch':
         this.cb.onRematch?.();
