@@ -307,6 +307,10 @@ function initOnlineMabar() {
       $('online-status').textContent = `Error: ${msg}`;
     },
     onConnected: (role) => {
+      // Ensure local selection is always from this device's own roster, never a previous opponent's fighter
+      refreshRoster();
+      state.p1Fighter = state.roster[0];
+      state.p2Fighter = state.roster[1] || state.roster[0];
       openSelectScreen('online');
       const myF = role === 'host' ? state.p1Fighter : state.p2Fighter;
       state.online.sendFighterSelect(myF, state.stageId);
@@ -339,6 +343,7 @@ function initOnlineMabar() {
     },
     onDisconnected: () => {
       stopBattleLoop();
+      state.online?.destroy();
       alert('Lawan terputus dari room.');
       showScreen('screen-title');
     },
@@ -348,6 +353,7 @@ function initOnlineMabar() {
 // SPRITE SHEET IMPORTER MODAL
 function openImporter() {
   state.importerData = null;
+  $('input-sprite-file').value = '';
   $('imp-name').value = '';
   $('imp-special').value = '';
   $('importer-status').textContent = '';
