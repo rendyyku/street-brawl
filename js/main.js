@@ -245,9 +245,14 @@ function syncHud() {
 
   if (eng.phase === 'match_over' && !state.resultShown) {
     state.resultShown = true;
-    const winF = eng.winnerSlot === 1 ? state.p2Fighter : state.p1Fighter;
-    $('result-winner-img').src = winF.portrait;
-    $('result-winner-name').textContent = `${winF.name} WINS!`;
+    if (eng.winnerSlot === -1) {
+      $('result-winner-img').src = state.p1Fighter.portrait;
+      $('result-winner-name').textContent = 'DRAW MATCH!';
+    } else {
+      const winF = eng.winnerSlot === 1 ? state.p2Fighter : state.p1Fighter;
+      $('result-winner-img').src = winF.portrait;
+      $('result-winner-name').textContent = `${winF.name} WINS!`;
+    }
     $('battle-result').classList.remove('hidden');
   }
 }
@@ -307,6 +312,10 @@ function initOnlineMabar() {
       $('online-status').textContent = `Error: ${msg}`;
     },
     onConnected: (role) => {
+      // Ensure local selection is always from this device's own roster, never a previous opponent's fighter
+      refreshRoster();
+      state.p1Fighter = state.roster[0];
+      state.p2Fighter = state.roster[1] || state.roster[0];
       openSelectScreen('online');
       const myF = role === 'host' ? state.p1Fighter : state.p2Fighter;
       state.online.sendFighterSelect(myF, state.stageId);
@@ -339,6 +348,7 @@ function initOnlineMabar() {
     },
     onDisconnected: () => {
       stopBattleLoop();
+      state.online?.destroy();
       alert('Lawan terputus dari room.');
       showScreen('screen-title');
     },
@@ -348,6 +358,7 @@ function initOnlineMabar() {
 // SPRITE SHEET IMPORTER MODAL
 function openImporter() {
   state.importerData = null;
+  $('input-sprite-file').value = '';
   $('imp-name').value = '';
   $('imp-special').value = '';
   $('importer-status').textContent = '';

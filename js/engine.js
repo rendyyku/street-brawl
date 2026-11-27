@@ -55,6 +55,8 @@ function createFighterState(slot, config) {
     comboTimer: 0,
     roundsWon: 0,
     prevButtons: { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false },
+    bufferedButtons: { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false },
+    bufferedSpDir: null,
   };
 }
 
@@ -175,6 +177,25 @@ export class FightingEngine {
     }
 
     if (this.hitstop > 0) {
+      const inputs = [rawP1, rawP2];
+      for (let i = 0; i < 2; i++) {
+        const f = this.fighters[i];
+        const inp = inputs[i];
+        for (const key of ['lp', 'hp', 'lk', 'hk', 'sp', 'sup']) {
+          if (inp[key] && !f.prevButtons[key]) {
+            f.bufferedButtons[key] = true;
+            if (key === 'sp') {
+              f.bufferedSpDir = {
+                left: Boolean(inp.left),
+                right: Boolean(inp.right),
+                up: Boolean(inp.up),
+                down: Boolean(inp.down),
+              };
+            }
+          }
+          f.prevButtons[key] = Boolean(inp[key]);
+        }
+      }
       this.hitstop -= 1;
       return;
     }
@@ -205,13 +226,21 @@ export class FightingEngine {
       this.phaseTimer -= 1;
       this.stepPhysicsOnly();
       if (this.phaseTimer <= 0) {
-        if (this.fighters[0].roundsWon >= MAX_ROUNDS_TO_WIN) {
+        const p1Won = this.fighters[0].roundsWon >= MAX_ROUNDS_TO_WIN;
+        const p2Won = this.fighters[1].roundsWon >= MAX_ROUNDS_TO_WIN;
+        if (p1Won && p2Won) {
+          this.phase = 'match_over';
+          this.winnerSlot = -1;
+          this.bannerText = 'DRAW MATCH';
+          this.bannerSub = 'DOUBLE K.O.';
+          this.emit('match_over', { winnerSlot: -1 });
+        } else if (p1Won) {
           this.phase = 'match_over';
           this.winnerSlot = 0;
           this.bannerText = `${this.fighters[0].name} WINS!`;
           this.bannerSub = 'CHAMPION';
           this.emit('match_over', { winnerSlot: 0 });
-        } else if (this.fighters[1].roundsWon >= MAX_ROUNDS_TO_WIN) {
+        } else if (p2Won) {
           this.phase = 'match_over';
           this.winnerSlot = 1;
           this.bannerText = `${this.fighters[1].name} WINS!`;
@@ -280,13 +309,16 @@ export class FightingEngine {
     if (f.invincibleFrames > 0) f.invincibleFrames -= 1;
 
     const pressed = {
-      lp: Boolean(input.lp && !f.prevButtons.lp),
-      hp: Boolean(input.hp && !f.prevButtons.hp),
-      lk: Boolean(input.lk && !f.prevButtons.lk),
-      hk: Boolean(input.hk && !f.prevButtons.hk),
-      sp: Boolean(input.sp && !f.prevButtons.sp),
-      sup: Boolean(input.sup && !f.prevButtons.sup),
+      lp: Boolean((input.lp && !f.prevButtons.lp) || f.bufferedButtons.lp),
+      hp: Boolean((input.hp && !f.prevButtons.hp) || f.bufferedButtons.hp),
+      lk: Boolean((input.lk && !f.prevButtons.lk) || f.bufferedButtons.lk),
+      hk: Boolean((input.hk && !f.prevButtons.hk) || f.bufferedButtons.hk),
+      sp: Boolean((input.sp && !f.prevButtons.sp) || f.bufferedButtons.sp),
+      sup: Boolean((input.sup && !f.prevButtons.sup) || f.bufferedButtons.sup),
     };
+    const spDir = f.bufferedButtons.sp && f.bufferedSpDir ? f.bufferedSpDir : input;
+    f.bufferedButtons = { lp: false, hp: false, lk: false, hk: false, sp: false, sup: false };
+    f.bufferedSpDir = null;
     f.prevButtons = {
       lp: Boolean(input.lp),
       hp: Boolean(input.hp),
@@ -297,8 +329,8 @@ export class FightingEngine {
     };
 
     const grounded = this.isGrounded(f);
-    const holdingForward = (f.facing === 1 && input.right) || (f.facing === -1 && input.left);
-    const holdingBack = (f.facing === 1 && input.left) || (f.facing === -1 && input.right);
+    let holdingForward = (f.facing === 1 && input.right) || (f.facing === -1 && input.left);
+    let holdingBack = (f.facing === 1 && input.left) || (f.facing === -1 && input.right);
 
     // Handle hitstun / blockstun / knockdown / wakeup
     if (f.state === STATES.HITSTUN || f.state === STATES.BLOCK || f.state === STATES.CROUCH_BLOCK) {
@@ -341,7 +373,9 @@ export class FightingEngine {
         if (pressed.sup && f.superMeter >= MAX_SUPER) {
           this.startMove(f, STATES.SUPER);
         } else if (pressed.sp) {
-          this.startSpecial(f, holdingForward, holdingBack, input.up, input.down);
+          const spForward = (f.facing === 1 && spDir.right) || (f.facing === -1 && spDir.left);
+          const spBack = (f.facing === 1 && spDir.left) || (f.facing === -1 && spDir.right);
+          this.startSpecial(f, spForward, spBack, spDir.up, spDir.down);
         }
       }
 
@@ -355,13 +389,17 @@ export class FightingEngine {
       // Free neutral / walk / crouch / jump state
       if (grounded) {
         f.facing = opp.x >= f.x ? 1 : -1;
+        holdingForward = (f.facing === 1 && input.right) || (f.facing === -1 && input.left);
+        holdingBack = (f.facing === 1 && input.left) || (f.facing === -1 && input.right);
       }
 
       // Check attack triggers
       if (pressed.sup && f.superMeter >= MAX_SUPER && grounded) {
         this.startMove(f, STATES.SUPER);
       } else if (pressed.sp && grounded) {
-        this.startSpecial(f, holdingForward, holdingBack, input.up, input.down);
+        const spForward = (f.facing === 1 && spDir.right) || (f.facing === -1 && spDir.left);
+        const spBack = (f.facing === 1 && spDir.left) || (f.facing === -1 && spDir.right);
+        this.startSpecial(f, spForward, spBack, spDir.up, spDir.down);
       } else if (pressed.hp) {
         this.startMove(f, STATES.HP);
       } else if (pressed.hk) {
@@ -548,7 +586,7 @@ export class FightingEngine {
       defender.stateFrame = 0;
       defender.stunFrames = spec.blockstun;
       defender.vx = -defender.facing * (spec.pushback * 0.55);
-      attacker.superMeter = Math.min(MAX_SUPER, attacker.superMeter + Math.round((spec.superGain || 6) * 0.5));
+      attacker.superMeter = Math.min(MAX_SUPER, attacker.superMeter + Math.round((spec.superGain ?? 6) * 0.5));
       defender.superMeter = Math.min(MAX_SUPER, defender.superMeter + 5);
       this.hitstop = Math.max(this.hitstop, Math.max(3, Math.floor(spec.hitstop * 0.7)));
       this.emit('block', {
@@ -581,7 +619,7 @@ export class FightingEngine {
       defender.stunFrames = spec.hitstun;
     }
 
-    attacker.superMeter = Math.min(MAX_SUPER, attacker.superMeter + (spec.superGain || 8));
+    attacker.superMeter = Math.min(MAX_SUPER, attacker.superMeter + (spec.superGain ?? 8));
     defender.superMeter = Math.min(MAX_SUPER, defender.superMeter + 10);
     this.hitstop = Math.max(this.hitstop, spec.hitstop);
 
@@ -599,7 +637,8 @@ export class FightingEngine {
   }
 
   resolveCombat(inputs) {
-    // Melee hitboxes
+    // Evaluate both melee hitboxes before applying hits so simultaneous trades connect fairly
+    const pendingMelee = [];
     for (let i = 0; i < 2; i++) {
       const atk = this.fighters[i];
       const def = this.fighters[1 - i];
@@ -611,19 +650,19 @@ export class FightingEngine {
         const move = MOVES[atk.state];
         const impactX = (Math.max(hb.x, hurt.x) + Math.min(hb.x + hb.w, hurt.x + hurt.w)) / 2;
         const impactY = (Math.max(hb.y, hurt.y) + Math.min(hb.y + hb.h, hurt.y + hurt.h)) / 2;
-        const hit = this.applyHit(
+        pendingMelee.push({
           atk,
           def,
-          inputs[1 - i],
-          {
-            ...move,
-            damage: Math.round(move.damage * atk.powerMul),
-          },
+          defInput: inputs[1 - i],
+          spec: { ...move, damage: Math.round(move.damage * atk.powerMul) },
           impactX,
-          impactY
-        );
-        if (hit) atk.hitRegistered = true;
+          impactY,
+        });
       }
+    }
+    for (const m of pendingMelee) {
+      const hit = this.applyHit(m.atk, m.def, m.defInput, m.spec, m.impactX, m.impactY);
+      if (hit) m.atk.hitRegistered = true;
     }
 
     // Projectile hits

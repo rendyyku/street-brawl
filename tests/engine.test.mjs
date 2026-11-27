@@ -118,3 +118,85 @@ test('AI produces valid inputs and snapshot sync restores state', () => {
   assert.equal(eng2.frame, eng.frame);
   assert.equal(eng2.fighters[0].x, eng.fighters[0].x);
 });
+
+test('simultaneous melee attacks trade damage fairly on both players', () => {
+  const eng = makeFightEngine();
+  eng.fighters[0].x = 400;
+  eng.fighters[1].x = 470;
+  const hp1 = eng.fighters[0].hp;
+  const hp2 = eng.fighters[1].hp;
+
+  const jab = { ...createEmptyInput(), lp: true };
+  eng.step(jab, jab);
+  for (let i = 0; i < 8; i++) eng.step();
+
+  assert.ok(eng.fighters[0].hp < hp1, 'P1 should take damage on trade');
+  assert.ok(eng.fighters[1].hp < hp2, 'P2 should take damage on trade');
+});
+
+test('super move does not refund spent super meter on hit', () => {
+  const eng = makeFightEngine();
+  eng.fighters[0].x = 400;
+  eng.fighters[1].x = 472;
+  eng.fighters[0].superMeter = MAX_SUPER;
+
+  eng.step({ ...createEmptyInput(), sup: true }, createEmptyInput());
+  for (let i = 0; i < 40; i++) eng.step();
+
+  assert.equal(eng.fighters[0].superMeter, 0);
+});
+
+test('double KO at 1-1 ends in a draw match instead of favoring P1', () => {
+  const eng = makeFightEngine();
+  eng.fighters[0].roundsWon = 1;
+  eng.fighters[1].roundsWon = 1;
+  eng.fighters[0].x = 400;
+  eng.fighters[1].x = 470;
+  eng.fighters[0].hp = 10;
+  eng.fighters[1].hp = 10;
+
+  const jab = { ...createEmptyInput(), lp: true };
+  eng.step(jab, jab);
+  for (let i = 0; i < 240; i++) eng.step();
+
+  assert.equal(eng.phase, 'match_over');
+  assert.equal(eng.winnerSlot, -1);
+  assert.equal(eng.bannerText, 'DRAW MATCH');
+});
+
+test('directional special after crossup uses updated facing', () => {
+  const eng = makeFightEngine();
+  // P1 crossed over to the right of P2 while still holding old facing=1
+  eng.fighters[0].x = 600;
+  eng.fighters[0].facing = 1;
+  eng.fighters[1].x = 450;
+
+  // Pressing left (toward P2 now) + SP should trigger UPPERCUT, not DASH_KICK
+  eng.step({ ...createEmptyInput(), left: true, sp: true }, createEmptyInput());
+  assert.equal(eng.fighters[0].facing, -1);
+  assert.equal(eng.fighters[0].state, STATES.UPPERCUT);
+});
+
+test('special tapped during hitstop buffers and cancels after hitstop ends', () => {
+  const eng = makeFightEngine();
+  eng.fighters[0].x = 400;
+  eng.fighters[1].x = 472;
+
+  eng.step({ ...createEmptyInput(), lp: true }, createEmptyInput());
+  // Advance until hit connects and hitstop triggers
+  let enteredHitstop = false;
+  for (let i = 0; i < 10; i++) {
+    eng.step();
+    if (eng.hitstop > 0) {
+      enteredHitstop = true;
+      break;
+    }
+  }
+  assert.ok(enteredHitstop, 'should enter hitstop on LP hit');
+
+  // Tap and release SP entirely inside hitstop
+  eng.step({ ...createEmptyInput(), sp: true }, createEmptyInput());
+  for (let i = 0; i < 10; i++) eng.step();
+
+  assert.equal(eng.fighters[0].state, STATES.SPECIAL);
+});
