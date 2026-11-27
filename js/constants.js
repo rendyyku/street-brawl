@@ -239,6 +239,18 @@ export const ULTIMATE_THEMES = {
     bannerTag: '> CLAUDE CODE // OVERDRIVE',
     particleStyle: 'code',
   },
+  pembangunan: {
+    id: 'pembangunan',
+    label: 'Tema Blusukan & Pembangunan',
+    bgTop: '#451a03',
+    bgBottom: '#d97706',
+    primary: '#f59e0b',
+    secondary: '#fde68a',
+    core: '#fffbeb',
+    accent: '#ffffff',
+    bannerTag: 'BLUSUKAN // PEMBANGUNAN',
+    particleStyle: 'cone',
+  },
   cyber: {
     id: 'cyber',
     label: 'Cyber Neon',

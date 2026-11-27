@@ -154,6 +154,8 @@ function startBattle(p1Config, p2Config, stageId) {
   state.renderer.setStage(state.stageId);
   state.renderer.preloadFighter(state.p1Fighter);
   state.renderer.preloadFighter(state.p2Fighter);
+  state.audio.preloadVoices(state.p1Fighter);
+  state.audio.preloadVoices(state.p2Fighter);
 
   state.engine = new FightingEngine(state.p1Fighter, state.p2Fighter);
   state.ai.setDifficulty(state.difficulty);
@@ -198,6 +200,31 @@ function handleAudioAndFx(events) {
     else if (ev.type === 'super_activate') state.audio.playSuper(ev.ultimateTheme);
     else if (ev.type === 'fight_start') state.audio.playFight();
     else if (ev.type === 'ko') state.audio.playKO();
+    playVoiceForEvent(ev);
+  }
+}
+
+function playVoiceForEvent(ev) {
+  const fighters = [state.p1Fighter, state.p2Fighter];
+  const voiceOf = (slot, key) => fighters[slot]?.voice?.[key];
+  const say = (slot, key, gap) => {
+    const src = voiceOf(slot, key);
+    if (src) state.audio.playVoice(src, `p${slot}`, gap);
+  };
+  if (ev.type === 'fight_start') {
+    // Only one fighter greets per round so the voices don't overlap
+    say(ev.round % 2 === 1 ? 0 : 1, 'fight', 0);
+  } else if (ev.type === 'super_activate') {
+    say(ev.slot, 'super', 0);
+  } else if (ev.type === 'hit' && ev.heavy) {
+    say(ev.defender, 'hurt', 2500);
+  } else if (ev.type === 'ko') {
+    if (ev.winnerSlot >= 0) {
+      say(1 - ev.winnerSlot, 'ko', 0);
+      setTimeout(() => say(ev.winnerSlot, 'victory', 0), 1400);
+    }
+  } else if (ev.type === 'time_over') {
+    say(ev.winnerSlot === 1 ? 0 : 1, 'timeOver', 0);
   }
 }
 
