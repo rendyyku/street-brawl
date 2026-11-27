@@ -110,7 +110,7 @@ export class FighterAI {
         setBack();
         input.sp = true; // Cyclone dash kick
       }
-    } else if (dist >= 220 && Math.random() < this.cfg.specialChance) {
+    } else if (dist >= 220 && me.specialType === 'fireball' && Math.random() < this.cfg.specialChance) {
       input.left = false;
       input.right = false;
       input.sp = true; // Fireball
