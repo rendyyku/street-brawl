@@ -219,3 +219,19 @@ test('per-character ultimateTheme propagates to super_activate event and multi-h
   assert.equal(eng.projectiles[0].ultimateTheme, 'love');
   assert.equal(eng.projectiles[0].hitsLeft, 5);
 });
+
+test('multi-hit super projectile lands all 5 hits and knocks down a cornered defender', () => {
+  const eng = makeFightEngine();
+  eng.fighters[0].x = 700;
+  eng.fighters[1].x = 900; // cornered at STAGE_RIGHT
+  eng.fighters[0].superMeter = MAX_SUPER;
+
+  eng.step({ ...createEmptyInput(), sup: true }, createEmptyInput());
+  let knockedDown = false;
+  for (let i = 0; i < 140; i++) {
+    eng.step();
+    if (eng.fighters[1].state === STATES.KNOCKDOWN) knockedDown = true;
+  }
+  assert.equal(knockedDown, true, '5th hit of Super should knock down a cornered defender');
+  assert.equal(eng.fighters[0].comboCount, 5);
+});

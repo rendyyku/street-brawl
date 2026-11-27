@@ -535,7 +535,7 @@ export class FightingEngine {
 
   updateProjectiles() {
     for (const p of this.projectiles) {
-      p.x += p.vx;
+      p.x += p.hitCooldown > 0 ? p.vx * 0.15 : p.vx;
       p.life -= 1;
       if (p.hitCooldown > 0) p.hitCooldown -= 1;
     }
