@@ -34,3 +34,16 @@ test('OWI is registered with the pembangunan ultimate and bicycle special', () =
   assert.equal(owi.projectileStyle, 'bicycle');
   assert.equal(owi.superName, 'INFRASTRUKTUR FINALE');
 });
+
+test('every stage references painted layers that exist and a known BGM', async () => {
+  const { STAGES } = await import('../js/constants.js');
+  const { BGM_FILES } = await import('../js/audio.js');
+  const ids = STAGES.map((s) => s.id);
+  assert.equal(new Set(ids).size, ids.length);
+  for (const s of STAGES) {
+    for (const p of [s.bgFar, s.bgMid].filter(Boolean)) {
+      assert.ok(existsSync(new URL(`../${p}`, import.meta.url)), `${s.id}: missing ${p}`);
+    }
+    if (s.bgm) assert.ok(BGM_FILES[s.bgm], `${s.id}: unknown bgm ${s.bgm}`);
+  }
+});

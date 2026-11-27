@@ -337,6 +337,11 @@ export const ARCHETYPES = {
   },
 };
 
+/**
+ * Stages: bgFar / bgMid are optional painted parallax layers (assets/stages/*.webp);
+ * without them the renderer falls back to its procedural backdrop.
+ * lightX = where the key light sits (drives shadow direction), ambient = atmosphere particles.
+ */
 export const STAGES = [
   {
     id: 'neon-alley',
@@ -347,6 +352,12 @@ export const STAGES = [
     floorColor: '#262436',
     floorLine: '#ff3d81',
     accent: '#00f5d4',
+    bgFar: 'assets/stages/neon-alley_far.webp',
+    bgMid: 'assets/stages/neon-alley_mid.webp',
+    bgm: 'battle_trance',
+    ambient: 'rain',
+    lightX: 480,
+    wetFloor: true,
   },
   {
     id: 'sunset-temple',
@@ -357,6 +368,11 @@ export const STAGES = [
     floorColor: '#3a231c',
     floorLine: '#ffb703',
     accent: '#ff6b35',
+    bgFar: 'assets/stages/sunset-temple_far.webp',
+    bgMid: 'assets/stages/sunset-temple_mid.webp',
+    bgm: 'battle_fast',
+    ambient: 'embers',
+    lightX: 480,
   },
   {
     id: 'harbor-arena',
@@ -367,5 +383,25 @@ export const STAGES = [
     floorColor: '#2c353d',
     floorLine: '#38bdf8',
     accent: '#facc15',
+    bgFar: 'assets/stages/harbor-arena_far.webp',
+    bgMid: 'assets/stages/harbor-arena_mid.webp',
+    bgm: 'battle_fast',
+    ambient: 'fog',
+    lightX: 820,
+  },
+  {
+    id: 'pasar-malam',
+    name: 'PASAR MALAM FESTIVAL',
+    subtitle: 'Bianglala • Lampion & Jajanan',
+    skyTop: '#1e1036',
+    skyBottom: '#7c2d12',
+    floorColor: '#2a1d1a',
+    floorLine: '#fbbf24',
+    accent: '#f97316',
+    bgFar: 'assets/stages/pasar-malam_far.webp',
+    bgMid: 'assets/stages/pasar-malam_mid.webp',
+    bgm: 'battle_trance',
+    ambient: 'lanterns',
+    lightX: 300,
   },
 ];

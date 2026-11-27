@@ -13,6 +13,21 @@ import {
 
 const CODE_TOKENS = ['</>', 'claude>', '{ }', '0xFF', 'git!', '>>>', 'API', '⚡'];
 
+const FAR_W = Math.round(STAGE_WIDTH * 1.12);
+const FAR_H = Math.round(STAGE_HEIGHT * 1.12);
+const MID_W = Math.round(STAGE_WIDTH * 1.25);
+const MID_H = Math.round(MID_W / 2);
+const PARALLAX_FAR = 0.12;
+const PARALLAX_MID = 0.32;
+
+function makeCanvas(w, h) {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  return c;
+}
+
 /**
  * 4x4 Sprite Sheet Grid Mapping (cell index 0..15):
  * Row 0: 0=Idle1, 1=Idle2, 2=Walk1, 3=Walk2
@@ -157,6 +172,9 @@ export class GameRenderer {
     this.afterimages = [];
     this.shake = 0;
     this.stage = STAGES[0];
+    this.stageLayers = { far: null, mid: null, floor: null };
+    this.ambient = [];
+    this.parallaxX = 0;
     this.bgTick = 0;
     // Light cinematic camera: zooms toward a focus point on combos, KO and Ultimates
     this.cam = { zoom: 1, x: STAGE_WIDTH / 2, y: STAGE_HEIGHT / 2, target: 1, fx: STAGE_WIDTH / 2, fy: STAGE_HEIGHT / 2, hold: 0 };
@@ -188,6 +206,129 @@ export class GameRenderer {
 
   setStage(stageId) {
     this.stage = STAGES.find((s) => s.id === stageId) || STAGES[0];
+    this.stageLayers = { far: null, mid: null, floor: null };
+    this.ambient = [];
+    this.parallaxX = 0;
+    const st = this.stage;
+    // Pre-scale painted layers once into offscreen canvases: per-frame drawImage is then a plain blit
+    const prepare = (src, key, w, h) => {
+      if (!src) return;
+      const img = new Image();
+      img.onload = () => {
+        if (this.stage !== st) return;
+        const c = makeCanvas(w, h);
+        const cx = c.getContext('2d');
+        const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+        const dw = img.naturalWidth * scale;
+        const dh = img.naturalHeight * scale;
+        // Far: center-crop. Mid: keep the bottom (ground line) anchored.
+        cx.drawImage(img, (w - dw) / 2, key === 'mid' ? h - dh : (h - dh) / 2, dw, dh);
+        this.stageLayers[key] = c;
+      };
+      img.src = src;
+    };
+    prepare(st.bgFar, 'far', FAR_W, FAR_H);
+    prepare(st.bgMid, 'mid', MID_W, MID_H);
+  }
+
+  buildFloor() {
+    const s = this.stage;
+    const h = STAGE_HEIGHT - GROUND_Y;
+    const c = makeCanvas(STAGE_WIDTH + 200, h);
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, s.floorColor + (s.wetFloor ? 'cc' : 'ee'));
+    g.addColorStop(1, '#05040a');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, c.width, h);
+    // Perspective tiles
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+    ctx.lineWidth = 2;
+    const cx = c.width / 2;
+    for (let x = -300; x <= c.width + 300; x += 90) {
+      ctx.beginPath();
+      ctx.moveTo(cx + (x - cx) * 0.55, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let i = 1; i < 4; i++) {
+      const y = h * (i / 4) ** 1.6;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(c.width, y);
+      ctx.stroke();
+    }
+    // Neon edge glow
+    const edge = ctx.createLinearGradient(0, 0, 0, 14);
+    edge.addColorStop(0, s.floorLine);
+    edge.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = edge;
+    ctx.globalAlpha = 0.55;
+    ctx.fillRect(0, 0, c.width, 14);
+    ctx.globalAlpha = 1;
+    return c;
+  }
+
+  updateAndDrawAmbient(ctx) {
+    const kind = this.stage.ambient;
+    if (!kind) return;
+    const target = kind === 'rain' ? 70 : kind === 'fog' ? 6 : 26;
+    while (this.ambient.length < target) {
+      this.ambient.push({
+        x: Math.random() * STAGE_WIDTH,
+        y: Math.random() * STAGE_HEIGHT,
+        v: Math.random(),
+        p: Math.random() * Math.PI * 2,
+      });
+    }
+    ctx.save();
+    for (const a of this.ambient) {
+      if (kind === 'rain') {
+        a.x -= 2.5;
+        a.y += 16 + a.v * 8;
+        if (a.y > GROUND_Y + 40) {
+          a.y = -20;
+          a.x = Math.random() * (STAGE_WIDTH + 80);
+        }
+        ctx.strokeStyle = `rgba(170, 210, 255, ${0.18 + a.v * 0.2})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(a.x + 3, a.y - 18);
+        ctx.stroke();
+      } else if (kind === 'embers') {
+        a.y -= 0.6 + a.v * 0.9;
+        a.x += Math.sin(this.bgTick * 0.03 + a.p) * 0.6;
+        if (a.y < -10) {
+          a.y = GROUND_Y + 10;
+          a.x = Math.random() * STAGE_WIDTH;
+        }
+        ctx.fillStyle = `rgba(255, ${150 + Math.round(a.v * 80)}, 60, ${0.35 + a.v * 0.4})`;
+        ctx.fillRect(a.x, a.y, 2 + a.v * 2, 2 + a.v * 2);
+      } else if (kind === 'fog') {
+        a.x += 0.25 + a.v * 0.3;
+        if (a.x > STAGE_WIDTH + 260) a.x = -260;
+        const fy = GROUND_Y - 60 - a.v * 160;
+        const g = ctx.createRadialGradient(a.x, fy, 10, a.x, fy, 240);
+        g.addColorStop(0, 'rgba(200, 225, 240, 0.10)');
+        g.addColorStop(1, 'rgba(200, 225, 240, 0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(a.x - 240, fy - 240, 480, 480);
+      } else if (kind === 'lanterns') {
+        a.y -= 0.25 + a.v * 0.35;
+        a.x += Math.sin(this.bgTick * 0.02 + a.p) * 0.4;
+        if (a.y < -10) {
+          a.y = GROUND_Y;
+          a.x = Math.random() * STAGE_WIDTH;
+        }
+        const flicker = 0.4 + Math.sin(this.bgTick * 0.12 + a.p) * 0.2;
+        ctx.fillStyle = `rgba(253, 186, 116, ${flicker * (0.5 + a.v * 0.5)})`;
+        ctx.beginPath();
+        ctx.arc(a.x, a.y, 1.5 + a.v * 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   cacheImage(src) {
@@ -322,7 +463,7 @@ export class GameRenderer {
     }
 
     // 1. Background stage
-    this.drawStage(ctx);
+    this.drawStage(ctx, engine);
 
     // 1b. Anime motion afterimages (Dash Kick, Uppercut, Super)
     this.updateAndDrawAfterimages(ctx);
@@ -338,8 +479,9 @@ export class GameRenderer {
       this.drawProjectile(ctx, proj, configs[proj.owner]);
     }
 
-    // 4. Particles
+    // 4. Particles + stage atmosphere
     this.updateAndDrawParticles(ctx);
+    this.updateAndDrawAmbient(ctx);
     ctx.restore();
 
     // 5. Cinematic cut-in overlay: quick slash for ULTI 1, full banner for ULTI 2
@@ -547,7 +689,45 @@ export class GameRenderer {
     ctx.restore();
   }
 
-  drawStage(ctx) {
+  drawStage(ctx, engine) {
+    const layers = this.stageLayers || {};
+    if (layers.far) {
+      // Parallax follows the midpoint between both fighters
+      const mid = engine ? (engine.fighters[0].x + engine.fighters[1].x) / 2 : STAGE_WIDTH / 2;
+      this.parallaxX += (mid - STAGE_WIDTH / 2 - this.parallaxX) * 0.08;
+      const px = this.parallaxX;
+      ctx.drawImage(layers.far, -(FAR_W - STAGE_WIDTH) / 2 - px * PARALLAX_FAR, -(FAR_H - STAGE_HEIGHT) * 0.6);
+      if (layers.mid) {
+        ctx.drawImage(layers.mid, -(MID_W - STAGE_WIDTH) / 2 - px * PARALLAX_MID, GROUND_Y + 10 - MID_H);
+      }
+      if (!layers.floor) layers.floor = this.buildFloor();
+      ctx.drawImage(layers.floor, -100 - px * 0.5, GROUND_Y);
+      if (this.stage.wetFloor) {
+        // Wet floor: faint mirrored strip of the backdrop
+        ctx.save();
+        ctx.globalAlpha = 0.16;
+        ctx.translate(0, GROUND_Y * 2);
+        ctx.scale(1, -1);
+        ctx.drawImage(layers.far, -(FAR_W - STAGE_WIDTH) / 2 - px * PARALLAX_FAR, GROUND_Y - 70, FAR_W, 70);
+        ctx.restore();
+      }
+      this.drawStageLight(ctx);
+      return;
+    }
+    this.drawProceduralStage(ctx);
+  }
+
+  drawStageLight(ctx) {
+    // Soft key light + edge vignette so fighters pop against the painted backdrop
+    const lx = this.stage.lightX ?? STAGE_WIDTH / 2;
+    const g = ctx.createRadialGradient(lx, GROUND_Y - 120, 40, lx, GROUND_Y - 120, 620);
+    g.addColorStop(0, 'rgba(255, 245, 220, 0.10)');
+    g.addColorStop(1, 'rgba(0, 0, 0, 0.38)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
+  }
+
+  drawProceduralStage(ctx) {
     const s = this.stage;
     const skyGrad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
     skyGrad.addColorStop(0, s.skyTop);
@@ -651,9 +831,11 @@ export class GameRenderer {
 
   drawFighter(ctx, f, config) {
     const airRatio = Math.max(0.35, 1 - (GROUND_Y - f.y) / 260);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+    const lightX = this.stage.lightX ?? STAGE_WIDTH / 2;
+    const lean = Math.max(-22, Math.min(22, (f.x - lightX) * 0.05));
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.3 + 0.18 * airRatio})`;
     ctx.beginPath();
-    ctx.ellipse(f.x, GROUND_Y + 6, 56 * airRatio, 13 * airRatio, 0, 0, Math.PI * 2);
+    ctx.ellipse(f.x + lean * airRatio, GROUND_Y + 6, (56 + Math.abs(lean)) * airRatio, 13 * airRatio, 0, 0, Math.PI * 2);
     ctx.fill();
 
     if (f.superMeter >= ULTI1_COST || f.state === STATES.SUPER || f.state === STATES.RUSH) {
