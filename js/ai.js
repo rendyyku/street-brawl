@@ -105,10 +105,14 @@ export class FighterAI {
       if (r < 0.45) input.hk = true;
       else if (r < 0.75) input.hp = true;
       else {
+        input.left = false;
+        input.right = false;
         setBack();
         input.sp = true; // Cyclone dash kick
       }
     } else if (dist >= 220 && Math.random() < this.cfg.specialChance) {
+      input.left = false;
+      input.right = false;
       input.sp = true; // Fireball
     }
 
