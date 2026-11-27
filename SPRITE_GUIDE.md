@@ -13,6 +13,7 @@ Panduan ini dirancang supaya **ChatGPT Plus / Gemini** (atau developer) yang mem
 | --- | --- | --- | --- | --- |
 | **NADIA** | `assets/fighters/nadia_sheet.webp` | `love` (**Tema Cinta**) | **HEARTSTORM FINALE** | `assets/fighters/nadia_*.webp` |
 | **RENDY** | `assets/fighters/rendy_sheet.webp` | `claude_code` (**Tema Claude Code**) | **CLAUDE CODE OVERDRIVE** | `assets/fighters/rendy_*.webp` |
+| **OWI** | `assets/fighters/owi_sheet.webp` | `pembangunan` (**Tema Blusukan & Pembangunan**) | **INFRASTRUKTUR FINALE** | `assets/fighters/owi_*.webp` |
 
 ---
 
@@ -47,12 +48,17 @@ Setiap action yang **belum** punya file strip akan otomatis fallback ke base she
 Setelah ChatGPT Plus menghasilkan gambar `.png` (background `#FF00FF`):
 
 ```bash
-# 1. Strip animasi 1x6 (otomatis hapus magenta #FF00FF -> transparent WebP)
-python3 tools/process_sprite.py nadia_ultimate.png assets/fighters/nadia_ultimate.webp
+# 1. Sprite sheet 4x4 (+ portrait 160x160 otomatis dari pose idle)
+python tools/process_sprite.py sheet nadia_sheet.png assets/fighters/nadia_sheet.webp --portrait assets/fighters/nadia_portrait.webp
 
-# 2. Banner Ultimate Cut-In 16:9 (tanpa chroma-key)
-python3 tools/process_sprite.py nadia_cutin.png assets/fighters/nadia_cutin.webp --no-chromakey --width 1024
+# 2. Strip animasi 1x6 (auto split di celah antar-frame, tidak ada pose yang kepotong)
+python tools/process_sprite.py strip nadia_ultimate.png assets/fighters/nadia_ultimate.webp --frames 6
+
+# 3. Banner Ultimate Cut-In 16:9 (tanpa chroma-key, auto crop ke 1024x576)
+python tools/process_sprite.py cutin nadia_cutin.png assets/fighters/nadia_cutin.webp
 ```
+
+> Workflow lengkap otomatis (foto -> Codex -> proses -> roster -> test) ada di `CLAUDE.md` bagian **SOP: Tambah Karakter Otomatis**.
 
 Lalu daftarkan di `js/roster.js` pada objek fighter terkait:
 

@@ -1,0 +1,77 @@
+<!doctype html>
+<meta charset="utf-8" />
+<base href="/" />
+<title>Fighter Preview</title>
+<!--
+  Visual check for one fighter, rendered with the real game renderer.
+  Serve the repo root (python -m http.server 8080) and open:
+    http://localhost:8080/tools/preview.html?id=owi&vs=nadia&stage=sunset-temple
+  Panels: idle + special projectile | ULTI 1 rush cut-in | ULTI 2 cut-in | ULTI 2 beam frame.
+  document.title becomes "done" (or "error: ...") so headless screenshots know when to stop.
+-->
+<body style="margin:0;background:#000;display:grid;gap:4px">
+  <canvas id="c0"></canvas><canvas id="c1"></canvas><canvas id="c2"></canvas><canvas id="c3"></canvas>
+  <script type="module">
+    import { BUILTIN_FIGHTERS, resolveFighterStats } from '/js/roster.js';
+    import { FightingEngine } from '/js/engine.js';
+    import { GameRenderer } from '/js/renderer.js';
+    import { MOVES, STATES } from '/js/constants.js';
+
+    const q = new URLSearchParams(location.search);
+    const pick = (id) => BUILTIN_FIGHTERS.find((f) => f.id === id);
+    const me = pick(q.get('id') || 'nadia');
+    const opp = pick(q.get('vs') || (me?.id === 'nadia' ? 'rendy' : 'nadia'));
+    if (!me || !opp) {
+      document.title = `error: unknown fighter id`;
+      throw new Error(document.title);
+    }
+    const cfg = [resolveFighterStats(me), resolveFighterStats(opp)];
+    const renderers = [0, 1, 2, 3].map((i) => {
+      const r = new GameRenderer(document.getElementById(`c${i}`));
+      r.setStage(q.get('stage') || 'neon-alley');
+      cfg.forEach((f) => r.preloadFighter(f));
+      return r;
+    });
+    const loaded = async () => {
+      for (const r of renderers)
+        for (const img of r.spriteCache.values())
+          if (!img.complete) await new Promise((res) => { img.onload = img.onerror = res; });
+    };
+    const fresh = () => {
+      const e = new FightingEngine(cfg[0], cfg[1]);
+      e.phase = 'fight';
+      e.bannerText = '';
+      return e;
+    };
+
+    loaded().then(() => {
+      let e = fresh();
+      e.fighters[0].state = STATES.SPECIAL;
+      e.fighters[0].stateFrame = MOVES[STATES.SPECIAL].startup + 2;
+      e.fighters[0].x = 300;
+      e.projectiles.push({ owner: 0, x: 470, y: 376, vx: 10, radius: 24, isSuper: false, hitsLeft: 1 });
+      renderers[0].render(e, cfg);
+
+      e = fresh();
+      e.fighters[0].x = 420;
+      e.fighters[1].x = 520;
+      e.fighters[0].state = STATES.RUSH;
+      e.fighters[0].stateFrame = 14;
+      Object.assign(e, { superFlash: 5, superFlashMax: 12, superFlashKind: 'rush', superFlashOwner: 0 });
+      renderers[1].render(e, cfg);
+
+      e = fresh();
+      Object.assign(e, { superFlash: 10, superFlashMax: 30, superFlashKind: 'super', superFlashOwner: 0 });
+      e.fighters[0].state = STATES.SUPER;
+      renderers[2].render(e, cfg);
+
+      e = fresh();
+      e.fighters[0].state = STATES.SUPER;
+      e.fighters[0].stateFrame = 9;
+      e.fighters[0].x = 260;
+      e.projectiles.push({ owner: 0, x: 520, y: 376, vx: 13, radius: 52, isSuper: true, ultimateTheme: cfg[0].ultimateTheme, hitsLeft: 5 });
+      renderers[3].render(e, cfg);
+      document.title = 'done';
+    });
+  </script>
+</body>
