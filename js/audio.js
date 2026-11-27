@@ -5,6 +5,39 @@ export class ArcadeAudio {
     this.bgmOn = true;
     this.bgmTimer = null;
     this.bgmStep = 0;
+    this.voiceCache = new Map();
+    this.lastVoiceAt = new Map();
+  }
+
+  /**
+   * Plays a short character voice clip (e.g. assets/audio/owi/lawan.mp3).
+   * Throttled per channel so rapid hits don't stack the same voice.
+   */
+  playVoice(src, channel = src, minGapMs = 1200) {
+    if (this.muted || !src || typeof Audio === 'undefined') return;
+    const now = Date.now();
+    if (now - (this.lastVoiceAt.get(channel) || 0) < minGapMs) return;
+    this.lastVoiceAt.set(channel, now);
+    let base = this.voiceCache.get(src);
+    if (!base) {
+      base = new Audio(src);
+      base.preload = 'auto';
+      this.voiceCache.set(src, base);
+    }
+    const clip = base.cloneNode();
+    clip.volume = 0.9;
+    clip.play().catch(() => {});
+  }
+
+  preloadVoices(fighter) {
+    if (!fighter?.voice || typeof Audio === 'undefined') return;
+    for (const src of Object.values(fighter.voice)) {
+      if (src && !this.voiceCache.has(src)) {
+        const a = new Audio(src);
+        a.preload = 'auto';
+        this.voiceCache.set(src, a);
+      }
+    }
   }
 
   unlock() {

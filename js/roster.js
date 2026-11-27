@@ -49,6 +49,39 @@ export const BUILTIN_FIGHTERS = [
     },
     isCustom: false,
   },
+  {
+    id: 'owi',
+    name: 'OWI',
+    title: 'Blusukan Builder',
+    archetype: 'shotokan',
+    specialName: 'BAGI-BAGI SEPEDA',
+    rushName: 'BLUSUKAN RUSH',
+    superName: 'INFRASTRUKTUR FINALE',
+    superQuote: 'KERJA! KERJA! KERJA!',
+    ultimateTheme: 'pembangunan',
+    projectileStyle: 'bicycle',
+    spriteSheet: 'assets/fighters/owi_sheet.webp',
+    portrait: 'assets/fighters/owi_portrait.webp',
+    ultimateCutin: 'assets/fighters/owi_cutin.webp',
+    animations: {
+      ultimate: { src: 'assets/fighters/owi_ultimate.webp', frames: 6, fps: 30 },
+    },
+    voice: {
+      fight: 'assets/audio/owi/sanggup.mp3',
+      super: 'assets/audio/owi/lawan.mp3',
+      hurt: 'assets/audio/owi/kaget.mp3',
+      ko: 'assets/audio/owi/diam.mp3',
+      victory: 'assets/audio/owi/hidup.mp3',
+      timeOver: 'assets/audio/owi/sudah_belum.mp3',
+    },
+    colors: {
+      primary: '#f59e0b',
+      accent: '#ffffff',
+      energy: '#f59e0b',
+      energyCore: '#fffbeb',
+    },
+    isCustom: false,
+  },
 ];
 
 export function resolveFighterStats(fighter) {
