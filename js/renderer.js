@@ -117,6 +117,7 @@ export class GameRenderer {
     this.canvas.height = STAGE_HEIGHT;
     this.spriteCache = new Map();
     this.particles = [];
+    this.afterimages = [];
     this.shake = 0;
     this.stage = STAGES[0];
     this.bgTick = 0;
@@ -235,6 +236,9 @@ export class GameRenderer {
 
     // 1. Background stage
     this.drawStage(ctx);
+
+    // 1b. Anime motion afterimages (Dash Kick, Uppercut, Super)
+    this.updateAndDrawAfterimages(ctx);
 
     // 2. Fighters (draw attacker on top)
     const order = engine.fighters[0].stateFrame < engine.fighters[1].stateFrame ? [1, 0] : [0, 1];
@@ -520,19 +524,165 @@ export class GameRenderer {
     let scaleY = 1;
     let offsetX = 0;
     let offsetY = 10;
+    let tilt = 0;
+    const sf = f.stateFrame;
 
-    if (f.state === STATES.HITSTUN && f.stateFrame < 8) {
-      offsetX = f.stateFrame % 2 === 0 ? -5 : 5;
-    } else if (f.state === STATES.UPPERCUT && f.stateFrame >= 4 && f.stateFrame < 14) {
-      scaleY = 1.07;
-      scaleX = 0.94;
-    } else if (f.state === STATES.DASH_KICK) {
-      scaleX = 1.08;
+    // Fluid procedural kinematics (breathing, anticipation, lunge, squash & stretch)
+    switch (f.state) {
+      case STATES.IDLE: {
+        const b = Math.sin(this.bgTick * 0.11 + f.slot * 1.4);
+        scaleY = 1 + b * 0.028;
+        scaleX = 1 - b * 0.018;
+        break;
+      }
+      case STATES.WALK_F:
+      case STATES.WALK_B: {
+        const step = Math.abs(Math.sin(sf * 0.24));
+        offsetY = 10 - step * 6;
+        scaleY = 1 + step * 0.03;
+        scaleX = 1 - step * 0.02;
+        tilt = f.state === STATES.WALK_F ? 0.045 : -0.035;
+        break;
+      }
+      case STATES.CROUCH: {
+        if (sf < 4) {
+          scaleY = 0.92 + (sf / 4) * 0.08;
+          scaleX = 1.07 - (sf / 4) * 0.07;
+        }
+        break;
+      }
+      case STATES.JUMP: {
+        if (f.vy < -4) {
+          scaleY = 1.08;
+          scaleX = 0.93;
+        } else if (f.vy > 6) {
+          scaleY = 1.05;
+          scaleX = 0.95;
+        }
+        tilt = f.vx * f.facing * 0.012;
+        break;
+      }
+      case STATES.LP:
+      case STATES.LK: {
+        if (sf < 3) {
+          offsetX = -f.facing * 5;
+          scaleX = 0.95;
+        } else if (sf < 8) {
+          offsetX = f.facing * 12;
+          scaleX = 1.08;
+          scaleY = 0.96;
+        } else {
+          const t = Math.min(1, (sf - 8) / 7);
+          offsetX = f.facing * 12 * (1 - t);
+        }
+        break;
+      }
+      case STATES.HP:
+      case STATES.HK: {
+        if (sf < 5) {
+          offsetX = -f.facing * 10;
+          scaleX = 0.92;
+          scaleY = 1.04;
+          tilt = -0.06;
+        } else if (sf < 12) {
+          offsetX = f.facing * 20;
+          scaleX = 1.13;
+          scaleY = 0.93;
+          tilt = 0.08;
+        } else {
+          const t = Math.min(1, (sf - 12) / 14);
+          offsetX = f.facing * 20 * (1 - t);
+          tilt = 0.08 * (1 - t);
+        }
+        break;
+      }
+      case STATES.SPECIAL:
+      case STATES.SUPER: {
+        const m = MOVES[f.state];
+        if (sf < m.startup) {
+          const pulse = Math.sin(sf * 0.9) * 0.04;
+          scaleX = 0.93 - pulse;
+          scaleY = 1.06 + pulse;
+          offsetX = -f.facing * 8;
+        } else if (sf < m.startup + 10) {
+          offsetX = f.facing * 18;
+          scaleX = 1.14;
+          scaleY = 0.92;
+        }
+        break;
+      }
+      case STATES.UPPERCUT: {
+        if (sf < 4) {
+          scaleY = 0.88;
+          scaleX = 1.1;
+        } else if (sf < 16) {
+          scaleY = 1.13;
+          scaleX = 0.9;
+          tilt = 0.06;
+        }
+        break;
+      }
+      case STATES.DASH_KICK: {
+        scaleX = 1.12;
+        scaleY = 0.94;
+        tilt = 0.1;
+        break;
+      }
+      case STATES.HITSTUN: {
+        if (sf < 8) {
+          offsetX = sf % 2 === 0 ? -6 : 6;
+          scaleX = 0.93;
+          scaleY = 1.06;
+        }
+        tilt = -0.1;
+        break;
+      }
+      case STATES.BLOCK:
+      case STATES.CROUCH_BLOCK: {
+        if (sf < 5) {
+          offsetX = -f.facing * 6;
+          scaleX = 0.94;
+        }
+        break;
+      }
+      case STATES.VICTORY: {
+        const hop = Math.abs(Math.sin(sf * 0.16));
+        offsetY = 10 - hop * 8;
+        scaleY = 1 + hop * 0.04;
+        break;
+      }
+      default:
+        break;
+    }
+
+    // Spawn anime afterimage trail on fast specials / Ultimate
+    const isTrailState =
+      f.state === STATES.DASH_KICK ||
+      f.state === STATES.UPPERCUT ||
+      f.state === STATES.SUPER ||
+      (f.state === STATES.HP && sf >= 5 && sf < 11) ||
+      (f.state === STATES.HK && sf >= 5 && sf < 11);
+    if (isTrailState && sf % 3 === 0 && baseImg && baseImg.complete && baseImg.naturalWidth > 0) {
+      const theme = ULTIMATE_THEMES[config?.ultimateTheme] || ULTIMATE_THEMES.cyber;
+      this.afterimages.push({
+        img: baseImg,
+        cell: getSpriteCellIndex(f),
+        x: f.x + offsetX,
+        y: f.y + offsetY,
+        facing: f.facing,
+        scaleX,
+        scaleY,
+        tilt,
+        tint: theme.primary,
+        life: 9,
+        maxLife: 9,
+      });
     }
 
     ctx.save();
     ctx.translate(f.x + offsetX, f.y + offsetY);
     ctx.scale(f.facing * scaleX, scaleY);
+    if (tilt !== 0) ctx.transform(1, 0, tilt, 1, 0, 0);
 
     if (f.state === STATES.HITSTUN && f.stateFrame < 4) {
       ctx.filter = 'brightness(2.2)';
@@ -684,6 +834,29 @@ export class GameRenderer {
     ctx.fill();
 
     ctx.restore();
+  }
+
+  updateAndDrawAfterimages(ctx) {
+    const drawW = 216;
+    const drawH = 216;
+    for (const a of this.afterimages) {
+      a.life -= 1;
+      const alpha = Math.max(0, (a.life / a.maxLife) * 0.36);
+      const col = a.cell % 4;
+      const row = Math.floor(a.cell / 4);
+      const cw = a.img.naturalWidth / 4;
+      const ch = a.img.naturalHeight / 4;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(a.x, a.y);
+      ctx.scale(a.facing * a.scaleX, a.scaleY);
+      if (a.tilt) ctx.transform(1, 0, a.tilt, 1, 0, 0);
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = a.tint;
+      ctx.drawImage(a.img, col * cw, row * ch, cw, ch, -drawW / 2, -drawH, drawW, drawH);
+      ctx.restore();
+    }
+    this.afterimages = this.afterimages.filter((a) => a.life > 0);
   }
 
   updateAndDrawParticles(ctx) {
