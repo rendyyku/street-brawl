@@ -14,10 +14,10 @@ export const BUILTIN_FIGHTERS = [
     ultimateTheme: 'love',
     spriteSheet: 'assets/fighters/nadia_sheet.webp',
     portrait: 'assets/fighters/nadia_portrait.webp',
-    ultimateCutin: null,
-    // Optional multi-frame horizontal strips per action (e.g. { src: 'assets/fighters/nadia_idle.webp', frames: 6, fps: 10 })
-    // Any action omitted automatically falls back to the 4x4 spriteSheet above.
-    animations: {},
+    ultimateCutin: 'assets/fighters/nadia_cutin.webp',
+    animations: {
+      ultimate: { src: 'assets/fighters/nadia_ultimate.webp', frames: 6, fps: 10 },
+    },
     colors: {
       primary: '#f43f5e',
       accent: '#fda4af',
@@ -37,8 +37,10 @@ export const BUILTIN_FIGHTERS = [
     ultimateTheme: 'claude_code',
     spriteSheet: 'assets/fighters/rendy_sheet.webp',
     portrait: 'assets/fighters/rendy_portrait.webp',
-    ultimateCutin: null,
-    animations: {},
+    ultimateCutin: 'assets/fighters/rendy_cutin.webp',
+    animations: {
+      ultimate: { src: 'assets/fighters/rendy_ultimate.webp', frames: 6, fps: 10 },
+    },
     colors: {
       primary: '#d97757',
       accent: '#4ade80',

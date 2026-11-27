@@ -699,7 +699,8 @@ export class GameRenderer {
       const idx = loop ? rawIdx % frames : Math.min(frames - 1, rawIdx);
       const fw = stripImg.naturalWidth / frames;
       const fh = stripImg.naturalHeight;
-      ctx.drawImage(stripImg, idx * fw, 0, fw, fh, -drawW / 2, -drawH, drawW, drawH);
+      const stripDrawW = Math.round(drawH * (fw / Math.max(1, fh)));
+      ctx.drawImage(stripImg, idx * fw, 0, fw, fh, -stripDrawW / 2, -drawH, stripDrawW, drawH);
     } else if (baseImg && baseImg.complete && baseImg.naturalWidth > 0) {
       const cell = getSpriteCellIndex(f);
       const col = cell % 4;
