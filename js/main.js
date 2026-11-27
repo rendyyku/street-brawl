@@ -1,11 +1,11 @@
 import { FighterAI } from './ai.js';
 import { ArcadeAudio } from './audio.js';
-import { MAX_SUPER, STAGES, TICK_RATE } from './constants.js';
+import { MAX_SUPER, STAGES, TICK_RATE, ULTI1_COST } from './constants.js';
 import { createEmptyInput, FightingEngine } from './engine.js';
 import { InputManager } from './input.js';
 import { OnlineMabar } from './netcode.js';
 import { GameRenderer } from './renderer.js';
-import { getFullRoster, resolveFighterStats, saveCustomFighter } from './roster.js';
+import { getFullRoster, resolveFighterStats, sanitizeRemoteFighter, saveCustomFighter } from './roster.js';
 import { loadImageFromFile, removeMagentaChromaKey } from './sprite-importer.js';
 
 const $ = (id) => document.getElementById(id);
@@ -35,6 +35,7 @@ const state = {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
   $(id)?.classList.add('active');
+  if (id !== 'screen-battle' && state.audio.ctx) state.audio.startBgm('menu');
 }
 
 function refreshRoster() {
@@ -73,11 +74,16 @@ function renderRosterGrid() {
     tile.className = 'fighter-tile';
     if (state.p1Fighter?.id === f.id) tile.classList.add('selected-p1');
     if (state.p2Fighter?.id === f.id) tile.classList.add('selected-p2');
-    tile.innerHTML = `
-      <img src="${f.portrait}" alt="${f.name}" />
-      <div class="ft-name">${f.name}</div>
-      <div class="ft-title">${f.title || f.archetype}</div>
-    `;
+    const img = document.createElement('img');
+    img.src = f.portrait;
+    img.alt = f.name;
+    const nameEl = document.createElement('div');
+    nameEl.className = 'ft-name';
+    nameEl.textContent = f.name;
+    const titleEl = document.createElement('div');
+    titleEl.className = 'ft-title';
+    titleEl.textContent = f.title || f.archetype;
+    tile.append(img, nameEl, titleEl);
     tile.addEventListener('click', () => {
       state.audio.playClick();
       if (state.mode === 'online' && state.online?.connected) {
@@ -172,8 +178,9 @@ function startBattle(p1Config, p2Config, stageId) {
 
   showScreen('screen-battle');
   state.audio.unlock();
-  state.audio.playFight();
-  state.audio.startBgm();
+  state.audio.playRoundCall(1, false);
+  const stage = STAGES.find((s) => s.id === state.stageId) || STAGES[0];
+  state.audio.startBgm(stage.bgm || 'battle_fast');
 
   state.lastTs = performance.now();
   state.acc = 0;
@@ -193,13 +200,22 @@ function handleAudioAndFx(events) {
   state.renderer.handleEvents(events, [state.p1Fighter, state.p2Fighter]);
   for (const ev of events) {
     if (ev.type === 'hit') state.audio.playHit(ev.heavy);
+    else if (ev.type === 'round_start') {
+      const [a, b] = state.engine?.fighters || [];
+      const isFinal = Boolean(a && b && a.roundsWon === 1 && b.roundsWon === 1);
+      state.audio.playRoundCall(ev.round, isFinal);
+    }
     else if (ev.type === 'block') state.audio.playBlock();
     else if (ev.type === 'attack_whiff') state.audio.playWhiff();
-    else if (ev.type === 'projectile_spawn') state.audio.playFireball();
+    else if (ev.type === 'projectile_spawn') state.audio.playFireball(ev.isSuper);
     else if (ev.type === 'uppercut') state.audio.playUppercut();
     else if (ev.type === 'super_activate') state.audio.playSuper(ev.ultimateTheme);
+    else if (ev.type === 'rush_activate') state.audio.playRush(ev.ultimateTheme);
+    else if (ev.type === 'rush_finisher' || ev.type === 'super_finisher') state.audio.playHit(true, true);
     else if (ev.type === 'fight_start') state.audio.playFight();
-    else if (ev.type === 'ko') state.audio.playKO();
+    else if (ev.type === 'ko') state.audio.playKO({ perfect: ev.perfect, double: ev.winnerSlot === -1 });
+    else if (ev.type === 'time_over') state.audio.playAnnouncer(ev.winnerSlot === -1 ? 'draw' : 'winner');
+    else if (ev.type === 'match_over') setTimeout(() => state.audio.playAnnouncer(ev.winnerSlot === -1 ? 'draw' : 'winner'), 400);
     playVoiceForEvent(ev);
   }
 }
@@ -216,6 +232,8 @@ function playVoiceForEvent(ev) {
     say(ev.round % 2 === 1 ? 0 : 1, 'fight', 0);
   } else if (ev.type === 'super_activate') {
     say(ev.slot, 'super', 0);
+  } else if (ev.type === 'rush_activate') {
+    say(ev.slot, 'rush', 0);
   } else if (ev.type === 'hit' && ev.heavy) {
     say(ev.defender, 'hurt', 2500);
   } else if (ev.type === 'ko') {
@@ -228,6 +246,26 @@ function playVoiceForEvent(ev) {
   }
 }
 
+const hudCache = new Map();
+
+/** Writes a DOM property only when it changed, to keep per-frame HUD updates cheap on phones. */
+function setHud(id, key, value) {
+  const cacheKey = `${id}.${key}`;
+  if (hudCache.get(cacheKey) === value) return;
+  hudCache.set(cacheKey, value);
+  const el = $(id);
+  if (!el) return;
+  if (key === 'width') el.style.width = value;
+  else if (key === 'text') el.textContent = value;
+  else el.classList.toggle(key, value);
+}
+
+function meterLabel(meter) {
+  if (meter >= MAX_SUPER) return 'ULTI 2 MAX!';
+  if (meter >= ULTI1_COST) return 'ULTI 1 READY';
+  return 'ULTI';
+}
+
 function syncHud() {
   const eng = state.engine;
   if (!eng) return;
@@ -238,27 +276,26 @@ function syncHud() {
   const p1Trail = Math.max(0, (p1.trailHp / p1.maxHp) * 100);
   const p2Trail = Math.max(0, (p2.trailHp / p2.maxHp) * 100);
 
-  const p1Bar = $('hud-p1-hp');
-  const p2Bar = $('hud-p2-hp');
-  p1Bar.style.width = `${p1Pct}%`;
-  p2Bar.style.width = `${p2Pct}%`;
-  p1Bar.classList.toggle('danger', p1Pct < 25);
-  p2Bar.classList.toggle('danger', p2Pct < 25);
-  $('hud-p1-trail').style.width = `${p1Trail}%`;
-  $('hud-p2-trail').style.width = `${p2Trail}%`;
+  setHud('hud-p1-hp', 'width', `${p1Pct.toFixed(1)}%`);
+  setHud('hud-p2-hp', 'width', `${p2Pct.toFixed(1)}%`);
+  setHud('hud-p1-hp', 'danger', p1Pct < 25);
+  setHud('hud-p2-hp', 'danger', p2Pct < 25);
+  setHud('hud-p1-trail', 'width', `${p1Trail.toFixed(1)}%`);
+  setHud('hud-p2-trail', 'width', `${p2Trail.toFixed(1)}%`);
 
-  const p1Sup = Math.min(100, (p1.superMeter / MAX_SUPER) * 100);
-  const p2Sup = Math.min(100, (p2.superMeter / MAX_SUPER) * 100);
-  $('hud-p1-super').style.width = `${p1Sup}%`;
-  $('hud-p2-super').style.width = `${p2Sup}%`;
-  $('hud-p1-super').classList.toggle('ready', p1.superMeter >= MAX_SUPER);
-  $('hud-p2-super').classList.toggle('ready', p2.superMeter >= MAX_SUPER);
-  $('hud-p1-super-label').textContent = p1.superMeter >= MAX_SUPER ? 'MAX SUPER!' : 'SUPER';
-  $('hud-p2-super-label').textContent = p2.superMeter >= MAX_SUPER ? 'MAX SUPER!' : 'SUPER';
+  for (const [slot, f] of [[1, p1], [2, p2]]) {
+    const pct = Math.min(100, (f.superMeter / MAX_SUPER) * 100);
+    setHud(`hud-p${slot}-super`, 'width', `${pct.toFixed(1)}%`);
+    setHud(`hud-p${slot}-super`, 'half', f.superMeter >= ULTI1_COST && f.superMeter < MAX_SUPER);
+    setHud(`hud-p${slot}-super`, 'ready', f.superMeter >= MAX_SUPER);
+    setHud(`hud-p${slot}-super-label`, 'text', meterLabel(f.superMeter));
+  }
 
-  // Touch Super button glow for local player
+  // Touch ULTI buttons glow for the local player
   const localSlot = state.mode === 'online' && state.online?.role === 'guest' ? 1 : 0;
-  $('btn-touch-super')?.classList.toggle('ready', eng.fighters[localSlot].superMeter >= MAX_SUPER);
+  const localMeter = eng.fighters[localSlot].superMeter;
+  setHud('btn-touch-ex', 'ready', localMeter >= ULTI1_COST);
+  setHud('btn-touch-super', 'ready', localMeter >= MAX_SUPER);
 
   // Round win orbs
   const p1Orbs = $('hud-p1-orbs').children;
@@ -268,7 +305,7 @@ function syncHud() {
     p2Orbs[i].classList.toggle('won', p2.roundsWon > i);
   }
 
-  $('hud-timer').textContent = String(eng.getTimeSeconds()).padStart(2, '0');
+  setHud('hud-timer', 'text', String(eng.getTimeSeconds()).padStart(2, '0'));
 
   if (eng.phase === 'match_over' && !state.resultShown) {
     state.resultShown = true;
@@ -347,7 +384,8 @@ function initOnlineMabar() {
       const myF = role === 'host' ? state.p1Fighter : state.p2Fighter;
       state.online.sendFighterSelect(myF, state.stageId);
     },
-    onRemoteSelect: (fighter, stageId) => {
+    onRemoteSelect: (rawFighter, stageId) => {
+      const fighter = sanitizeRemoteFighter(rawFighter);
       if (!fighter) return;
       if (state.online.role === 'host') {
         state.p2Fighter = resolveFighterStats(fighter);
@@ -360,7 +398,10 @@ function initOnlineMabar() {
       renderRosterGrid();
     },
     onStartMatch: (p1F, p2F, stageId) => {
-      startBattle(p1F, p2F, stageId);
+      const remoteP1 = sanitizeRemoteFighter(p1F);
+      if (!remoteP1) return;
+      // Guest keeps its own local P2 definition; only the host's fighter comes from the network
+      startBattle(remoteP1, state.p2Fighter || sanitizeRemoteFighter(p2F), stageId);
     },
     onStateSync: (snap, events) => {
       if (!state.engine) return;
@@ -561,7 +602,7 @@ function wireEvents() {
   });
 
   $('btn-start-fight').addEventListener('click', () => {
-    state.audio.playClick();
+    state.audio.playConfirm();
     if (state.mode === 'online' && state.online?.connected && state.online.role === 'host') {
       state.online.sendStartMatch(state.p1Fighter, state.p2Fighter, state.stageId);
     }
@@ -569,10 +610,47 @@ function wireEvents() {
   });
 
   // Battle Screen controls
+  const syncMuteUi = () => {
+    $('btn-mute').textContent = state.audio.muted ? 'OFF' : 'SFX';
+    $('chk-mute').checked = state.audio.muted;
+  };
   $('btn-mute').addEventListener('click', () => {
-    const muted = state.audio.toggleMute();
-    $('btn-mute').textContent = muted ? 'OFF' : 'SFX';
+    state.audio.toggleMute();
+    syncMuteUi();
   });
+
+  // Volume settings modal (title screen + in-battle VOL button)
+  const openAudio = () => {
+    document.querySelectorAll('[data-vol]').forEach((el) => {
+      el.value = Math.round(state.audio.getVolume(el.dataset.vol) * 100);
+    });
+    syncMuteUi();
+    $('modal-audio').classList.remove('hidden');
+  };
+  $('btn-open-audio').addEventListener('click', () => {
+    state.audio.playClick();
+    openAudio();
+  });
+  $('btn-audio-battle').addEventListener('click', openAudio);
+  $('btn-close-audio').addEventListener('click', () => $('modal-audio').classList.add('hidden'));
+  document.querySelectorAll('[data-vol]').forEach((el) => {
+    el.addEventListener('input', () => state.audio.setVolume(el.dataset.vol, Number(el.value) / 100));
+  });
+  $('chk-mute').addEventListener('change', (e) => {
+    if (e.target.checked !== state.audio.muted) state.audio.toggleMute();
+    syncMuteUi();
+  });
+  syncMuteUi();
+
+  // Browsers only allow audio after a user gesture: start the menu theme on the first tap
+  document.addEventListener(
+    'pointerdown',
+    () => {
+      state.audio.unlock();
+      if (!$('screen-battle').classList.contains('active')) state.audio.startBgm('menu');
+    },
+    { once: true }
+  );
 
   $('btn-exit-battle').addEventListener('click', () => {
     stopBattleLoop();

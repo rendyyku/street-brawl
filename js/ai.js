@@ -1,4 +1,4 @@
-import { ATTACK_STATES, MAX_SUPER, STATES } from './constants.js';
+import { ATTACK_STATES, MAX_SUPER, STATES, ULTI1_COST } from './constants.js';
 import { createEmptyInput } from './engine.js';
 
 const DIFFICULTY = {
@@ -67,6 +67,17 @@ export class FighterAI {
     if (opp.state === STATES.JUMP && dist < 145 && Math.random() < this.cfg.reactionRate) {
       setForward();
       input.sp = true;
+      return input;
+    }
+
+    // ULTI 1: spend half a bar on a close-range rush (keeps saving when the full bar is near)
+    if (
+      me.superMeter >= ULTI1_COST &&
+      me.superMeter < MAX_SUPER - 15 &&
+      dist < 170 &&
+      Math.random() < this.cfg.reactionRate * 0.45
+    ) {
+      input.ex = true;
       return input;
     }
 

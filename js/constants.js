@@ -8,6 +8,8 @@ export const TICK_RATE = 60;
 export const ROUND_TIME_SECONDS = 99;
 export const MAX_ROUNDS_TO_WIN = 2;
 export const MAX_SUPER = 100;
+/** ULTI 1 (EX / Rush) costs half the bar; ULTI 2 (cinematic) costs the full bar. */
+export const ULTI1_COST = 50;
 
 export const PHYSICS = {
   gravity: 0.92,
@@ -37,6 +39,7 @@ export const STATES = {
   SPECIAL: 'special',
   UPPERCUT: 'uppercut',
   DASH_KICK: 'dash_kick',
+  RUSH: 'rush',
   SUPER: 'super',
   BLOCK: 'block',
   CROUCH_BLOCK: 'crouch_block',
@@ -55,6 +58,7 @@ export const ATTACK_STATES = new Set([
   STATES.SPECIAL,
   STATES.UPPERCUT,
   STATES.DASH_KICK,
+  STATES.RUSH,
   STATES.SUPER,
 ]);
 
@@ -189,6 +193,27 @@ export const MOVES = {
     hitLevel: 'mid',
     hitbox: { x: 18, y: -104, w: 86, h: 48 },
   },
+  [STATES.RUSH]: {
+    name: 'RUSH ULTIMATE',
+    startup: 6,
+    active: 28,
+    recovery: 18,
+    damage: 44,
+    chipDamage: 10,
+    hitstun: 22,
+    blockstun: 12,
+    pushback: 3,
+    hitstop: 5,
+    superCost: ULTI1_COST,
+    superGain: 0,
+    cancelable: false,
+    knockdown: false,
+    invincibleFrames: 10,
+    lungeVx: 10.5,
+    multiHit: { count: 4, interval: 6, finisherPushback: 20 },
+    hitLevel: 'mid',
+    hitbox: { x: 14, y: -132, w: 96, h: 112 },
+  },
   [STATES.SUPER]: {
     name: 'ULTIMATE BLAST',
     startup: 10,
@@ -312,6 +337,11 @@ export const ARCHETYPES = {
   },
 };
 
+/**
+ * Stages: bgFar / bgMid are optional painted parallax layers (assets/stages/*.webp);
+ * without them the renderer falls back to its procedural backdrop.
+ * lightX = where the key light sits (drives shadow direction), ambient = atmosphere particles.
+ */
 export const STAGES = [
   {
     id: 'neon-alley',
@@ -322,6 +352,12 @@ export const STAGES = [
     floorColor: '#262436',
     floorLine: '#ff3d81',
     accent: '#00f5d4',
+    bgFar: 'assets/stages/neon-alley_far.webp',
+    bgMid: 'assets/stages/neon-alley_mid.webp',
+    bgm: 'battle_trance',
+    ambient: 'rain',
+    lightX: 480,
+    wetFloor: true,
   },
   {
     id: 'sunset-temple',
@@ -332,6 +368,11 @@ export const STAGES = [
     floorColor: '#3a231c',
     floorLine: '#ffb703',
     accent: '#ff6b35',
+    bgFar: 'assets/stages/sunset-temple_far.webp',
+    bgMid: 'assets/stages/sunset-temple_mid.webp',
+    bgm: 'battle_fast',
+    ambient: 'embers',
+    lightX: 480,
   },
   {
     id: 'harbor-arena',
@@ -342,5 +383,25 @@ export const STAGES = [
     floorColor: '#2c353d',
     floorLine: '#38bdf8',
     accent: '#facc15',
+    bgFar: 'assets/stages/harbor-arena_far.webp',
+    bgMid: 'assets/stages/harbor-arena_mid.webp',
+    bgm: 'battle_fast',
+    ambient: 'fog',
+    lightX: 820,
+  },
+  {
+    id: 'pasar-malam',
+    name: 'PASAR MALAM FESTIVAL',
+    subtitle: 'Bianglala • Lampion & Jajanan',
+    skyTop: '#1e1036',
+    skyBottom: '#7c2d12',
+    floorColor: '#2a1d1a',
+    floorLine: '#fbbf24',
+    accent: '#f97316',
+    bgFar: 'assets/stages/pasar-malam_far.webp',
+    bgMid: 'assets/stages/pasar-malam_mid.webp',
+    bgm: 'battle_trance',
+    ambient: 'lanterns',
+    lightX: 300,
   },
 ];
